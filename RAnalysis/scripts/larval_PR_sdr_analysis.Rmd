@@ -1,0 +1,558 @@
+---
+title: "Larval PI Curve Plotting and Analysis - Hawaii 2023" 
+author: "AS Huffmyer"
+date: '2023'
+output:
+  html_document:
+    code_folding: hide
+    toc: yes
+    toc_depth: 6
+    toc_float: yes
+  pdf_document:
+    keep_tex: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+NEED TO REMOVE/QC OUTLIERS FOR ALL PLOTS 
+
+# Setup  
+
+Set up workspace, set options, and load required packages.    
+```{r}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r, warning=FALSE, message=FALSE}
+## install packages if you dont already have them in your library
+if ("tidyverse" %in% rownames(installed.packages()) == 'FALSE') install.packages('tidyverse') 
+if ("car" %in% rownames(installed.packages()) == 'FALSE') install.packages('car') 
+if ("lme4" %in% rownames(installed.packages()) == 'FALSE') install.packages('lme4') 
+if ("lmerTest" %in% rownames(installed.packages()) == 'FALSE') install.packages('lmerTest') 
+if ("scales" %in% rownames(installed.packages()) == 'FALSE') install.packages('scales') 
+if ("cowplot" %in% rownames(installed.packages()) == 'FALSE') install.packages('cowplot') 
+if ("ggplot2" %in% rownames(installed.packages()) == 'FALSE') install.packages('ggplot2') 
+if ("effects" %in% rownames(installed.packages()) == 'FALSE') install.packages('effects') 
+if ("emmeans" %in% rownames(installed.packages()) == 'FALSE') install.packages('emmeans') 
+if ("multcomp" %in% rownames(installed.packages()) == 'FALSE') install.packages('multcomp') 
+if ("rTPC" %in% rownames(installed.packages()) == 'FALSE') remotes::install_github("padpadpadpad/rTPC")
+if ("ggstatsplot" %in% rownames(installed.packages()) == 'FALSE') remotes::install_github("IndrajeetPatil/ggstatsplot")
+if ("nls.multstart" %in% rownames(installed.packages()) == 'FALSE') install.packages('nls.multstart')
+if ("broom" %in% rownames(installed.packages()) == 'FALSE') install.packages('broom')
+if ("emmeans" %in% rownames(installed.packages()) == 'FALSE') install.packages('emmeans')
+
+#load packages
+library("ggplot2")
+library("tidyverse")
+library('car')
+library('lme4')
+library('lmerTest')
+library('scales')
+library('cowplot')
+library('rTPC')
+library('ggstatsplot')
+library('nls.multstart')
+library('broom')
+library('emmeans')
+```
+
+
+# Data visualization and manipulation  
+
+Load data from LoLinR.    
+```{r, warning=FALSE, message=FALSE}
+pr_data<-read.csv("output/pr_sdr/pr_calculated_normalized_photo_rates.csv") #load data
+```
+
+Format data. 
+```{r, warning=FALSE, message=FALSE}
+#remove all rows of wells that did not have samples or blanks
+pr_data<-pr_data[!is.na(pr_data$Type),]
+
+#format columns
+pr_data$Tank<-as.factor(pr_data$Tank)
+pr_data$Symbiont<-as.factor(pr_data$Symbiont)
+pr_data$SDR<-as.factor(pr_data$SDR)
+pr_data$Plate<-as.factor(pr_data$Plate)
+pr_data$Temperature<-as.factor(pr_data$Temperature)
+```
+
+Remove plate that didnt work 
+
+```{r}
+#pr_data<-pr_data%>%
+#  filter(!Plate==2)%>%
+#  filter(!Plate==1)
+```
+
+Look for outliers in the data.  
+
+```{r}
+boxplot(pr_data$P.nmol.org.min)
+#pr_data<-pr_data%>%filter(P.nmol.org.min < 0.08)
+#boxplot(pr_data$P.nmol.org.min)
+
+boxplot(pr_data$P.nmol.org.min~pr_data$PAR)
+
+pr_data$code<-paste(pr_data$Temperature, "_",pr_data$PAR)
+
+boxplot(pr_data$P.nmol.org.min~pr_data$code)
+```
+
+Set values at 0 for light runs if <0 indicating no photosynthesis occurred. Set values at 0 for dark runs if >0 indicating no respiration occurred. 
+```{r}
+pr_data<-pr_data%>%
+  mutate(P.nmol.org.min=if_else(P.nmol.org.min<0 & PAR==100, 0, 
+                                if_else(P.nmol.org.min<0 & PAR==500, 0, 
+                                        if_else(P.nmol.org.min>0 & PAR==0, 0, P.nmol.org.min))))
+```
+
+Calculate mean temperature values for each run.    
+
+```{r}
+pr.temps<-read.csv("output/pr_sdr/runs_temp.csv")
+pr.temps = subset(pr.temps, select = -c(X) ) #remove empty column
+
+pr_data$Plate<-as.integer(pr_data$Plate)
+```
+
+Add temperature data to master data frame.  
+```{r}
+pr_data<-left_join(pr_data,pr.temps)
+
+#round to 0.1°C 
+pr_data<-pr_data%>%
+  mutate(Temp.C=round(Temp.C,1))
+```
+
+Set levels for light. 
+```{r}
+pr_data$PAR<-factor(pr_data$PAR, levels=c("100", "500", "0"))
+```
+
+# Plot and analyze: 20230624 
+
+Plot data with means   
+```{r}
+pr_plot1<-pr_data %>%
+    filter(Date=="20230624")%>%
+    group_by(PAR, Symbiont, Temperature)%>%
+    dplyr::summarise(mean=mean(P.nmol.org.min, na.rm=TRUE), sd=sd(P.nmol.org.min, na.rm=TRUE), N=length(P.nmol.org.min), se=sd/sqrt(N))%>%
+    
+    ggplot(., aes(x = as.factor(PAR), y = mean, group=interaction(PAR, Symbiont))) +
+    facet_wrap(~Temperature)+
+    geom_hline(yintercept=0, linetype="dashed", color="black", size=0.75)+
+    geom_point(aes(group=interaction(PAR, Symbiont), colour=Symbiont), size=6, position = position_dodge(0.4)) + 
+    geom_errorbar(aes(ymin=mean-se, ymax=mean+se, group=interaction(PAR, Symbiont)), width=0, linetype="solid", position=position_dodge(0.4), size=0.8, color="black")+
+    xlab("Light (PAR)") + 
+    scale_color_manual(name="Symbiont", values=c("orange","brown4", "gray"))+
+    ylab(expression(bold(paste("log P (nmol ", O[2], " larva"^-1, "min"^-1, ")")))) +
+    #ylim(0, 0.05)+
+    theme_classic() + 
+    theme(
+      legend.position="right",
+      axis.title=element_text(face="bold", size=16),
+      axis.text=element_text(size=12, color="black"), 
+      legend.title=element_text(face="bold", size=14), 
+      legend.text=element_text(size=12)
+      ); pr_plot1
+
+ggsave("figures/pr_sdr/pr_means.png", pr_plot1, dpi=300, w=7, h=5, units="in")
+```
+
+Display with plate. 
+```{r}
+pr_plot1a<-pr_data %>%
+    filter(Date=="20230624")%>%
+    group_by(PAR, Symbiont, Plate)%>%
+    dplyr::summarise(mean=mean(P.nmol.org.min, na.rm=TRUE), sd=sd(P.nmol.org.min, na.rm=TRUE), N=length(P.nmol.org.min), se=sd/sqrt(N))%>%
+    
+    ggplot(., aes(x = as.factor(PAR), y = mean, group=interaction(PAR, Symbiont))) +
+    facet_wrap(~Plate)+
+    geom_hline(yintercept=0, linetype="dashed", color="black", size=0.75)+
+    geom_point(aes(group=interaction(PAR, Symbiont), colour=Symbiont), size=6, position = position_dodge(0.4)) + 
+    geom_errorbar(aes(ymin=mean-se, ymax=mean+se, group=interaction(PAR, Symbiont)), width=0, linetype="solid", position=position_dodge(0.4), size=0.8, color="black")+
+    xlab("Light (PAR)") + 
+    scale_color_manual(name="Symbiont", values=c("orange","brown4", "gray"))+
+    ylab(expression(bold(paste("log P (nmol ", O[2], " larva"^-1, "min"^-1, ")")))) +
+    #ylim(0, 0.05)+
+    theme_classic() + 
+    theme(
+      legend.position="right",
+      axis.title=element_text(face="bold", size=16),
+      axis.text=element_text(size=12, color="black"), 
+      legend.title=element_text(face="bold", size=14), 
+      legend.text=element_text(size=12)
+      ); pr_plot1a
+```
+
+View by plate. 
+```{r}
+pr_plot2b<-pr_data %>%
+    filter(Date=="20230624")%>%
+    ggplot(., aes(x = as.factor(PAR), y = P.nmol.org.min, group=Symbiont)) +
+    facet_wrap(~Plate)+
+    geom_hline(yintercept=0, linetype="dashed", color="black", size=0.75)+
+    geom_smooth(aes(color=Symbiont, group=Symbiont), method="loess", alpha=0.4, se=FALSE)+
+    xlab("Light (PAR)") + 
+    scale_color_manual(name="Symbiont", values=c("orange","brown4", "gray"))+
+    ylab(expression(bold(paste("log P (nmol ", O[2], " larva"^-1, "min"^-1, ")")))) +
+    #ylim(0, 0.05)+
+    theme_classic() + 
+    theme(
+      legend.position="right",
+      axis.title=element_text(face="bold", size=16),
+      axis.text=element_text(size=12, color="black"), 
+      legend.title=element_text(face="bold", size=14), 
+      legend.text=element_text(size=12)
+      ); pr_plot2b
+```
+
+Plot data with dots   
+```{r}
+pr_plot3<-pr_data %>%
+    filter(Date=="20230624")%>%
+  
+    ggplot(., aes(x = as.factor(PAR), y = P.nmol.org.min, group=interaction(PAR, Symbiont))) +
+    facet_wrap(~Temperature)+
+    geom_hline(yintercept=0, linetype="dashed", color="black", size=0.75)+
+    geom_point(aes(group=interaction(PAR, Symbiont), color=Symbiont), size=3, fill="white", position = position_jitterdodge(0.4), shape=21) + 
+    geom_smooth(aes(color=Symbiont, group=Symbiont), method="loess", size=2, alpha=0.4, se=FALSE)+
+    xlab("Light (PAR)") + 
+    scale_color_manual(name="Symbiont", values=c("orange","brown4", "gray"))+
+    ylab(expression(bold(paste("log P (nmol ", O[2], " larva"^-1, "min"^-1, ")")))) +
+    #ylim(0, 0.05)+
+    theme_classic() + 
+    theme(
+      legend.position="right",
+      axis.title=element_text(face="bold", size=16),
+      axis.text=element_text(size=12, color="black"), 
+      legend.title=element_text(face="bold", size=14), 
+      legend.text=element_text(size=12)
+      ); pr_plot3
+
+ggsave("figures/pr_sdr/pr_dots.png", pr_plot3, dpi=300, w=7, h=5, units="in")
+```
+
+## Conduct anova 
+
+Run anova on values at each temperature
+```{r}
+model<-pr_data%>%
+  filter(Date=="20230624")%>%
+  aov(P.nmol.org.min~PAR*Symbiont*Temperature, data=.)
+
+summary(model)
+
+TukeyHSD(model, "PAR")
+
+emm<-emmeans(model, ~ PAR | Temperature)
+pairs(emm)
+```
+Oxygen values are different by light levels and temperature interactions. 
+
+Run model for 27 
+```{r}
+model<-pr_data%>%
+  filter(Date=="20230624")%>%
+  filter(Temperature==27)%>%
+  aov(P.nmol.org.min~PAR*Symbiont, data=.)
+
+summary(model)
+```
+At 27, oxygen is different by PAR. 
+
+Run model for 30
+```{r}
+model<-pr_data%>%
+  filter(Date=="20230624")%>%
+  filter(Temperature==30)%>%
+  aov(P.nmol.org.min~PAR*Symbiont, data=.)
+
+summary(model)
+```
+At 27, oxygen is different by PAR. 
+
+Run model for 33
+```{r}
+model<-pr_data%>%
+  filter(Date=="20230624")%>%
+  filter(Temperature==33)%>%
+  aov(P.nmol.org.min~PAR*Symbiont, data=.)
+
+summary(model)
+```
+At 27, oxygen is different by PAR. 
+
+# Calculate R, P, and P:R: 20230624 
+
+Calculate gross photosynthesis and P:R ratio. 
+```{r}
+pr_data_calc<-pr_data%>%
+  filter(Date=="20230624")%>%
+  select(Date, Chamber.ID, Plate, Run, Temperature, Symbiont, PAR, P.nmol.org.min)%>%
+  pivot_wider(names_from=PAR, values_from=P.nmol.org.min)%>%
+  mutate(ler=`0`)%>%
+  mutate(ler_inverse=ler*-1)%>%
+  mutate(p_net_low=`100`)%>%
+  mutate(p_net_high=`500`)%>%
+  mutate(p_gross_low=p_net_low-ler)%>%
+  mutate(p_gross_high=p_net_high-ler)%>%
+  mutate(ratio_low=p_gross_low/(ler_inverse))%>%
+  mutate(ratio_high=p_gross_high/(ler_inverse))%>%
+  pivot_longer(names_to="Metric", values_to="Value", cols=c(ler:ratio_high))%>%
+  select(!c(`0`, `100`, `500`))
+
+boxplot(pr_data_calc$Value)
+
+pr_data_calc<-pr_data_calc%>%
+  filter(Value>0)
+
+boxplot(pr_data_calc$Value)
+```
+
+View P metrics. 
+```{r}
+metric_plot1<-pr_data_calc%>%
+    filter(Date=="20230624")%>%
+    filter(!Metric=="ratio_high")%>%
+    filter(!Metric=="ratio_low")%>%
+    filter(!Metric=="ler")%>%
+     filter(!Metric=="ler_inverse")%>%
+  
+    ggplot(., aes(x = Temperature, y = Value)) +
+    facet_wrap(~Metric)+
+    geom_hline(yintercept=0, linetype="dashed", color="black", size=0.75)+
+    geom_point(aes(group=interaction(Temperature, Symbiont), color=Symbiont), size=3, fill="white", position = position_jitterdodge(0.4), shape=21) + 
+    geom_smooth(aes(color=Symbiont, group=Symbiont), method="loess", size=2, alpha=0.4, se=FALSE)+
+    xlab("Temperature") + 
+    scale_color_manual(name="Symbiont", values=c("orange","brown4", "gray"))+
+    ylab(expression(bold(paste("Value")))) +
+    #ylim(0, 0.05)+
+    theme_classic() + 
+    theme(
+      legend.position="right",
+      axis.title=element_text(face="bold", size=16),
+      axis.text=element_text(size=12, color="black"), 
+      legend.title=element_text(face="bold", size=14), 
+      legend.text=element_text(size=12)
+      ); metric_plot1
+
+ggsave("figures/pr_sdr/pr_photometrics.png", metric_plot1, dpi=300, w=7, h=5, units="in")
+```
+
+View R metrics. 
+```{r}
+metric_plot1a<-pr_data_calc%>%
+    filter(Date=="20230624")%>%
+    filter(Metric %in% c("ler_inverse"))%>%
+  
+    ggplot(., aes(x = Temperature, y = Value)) +
+    facet_wrap(~Metric)+
+    geom_hline(yintercept=0, linetype="dashed", color="black", size=0.75)+
+    geom_point(aes(group=interaction(Temperature, Symbiont), color=Symbiont), size=3, fill="white", position = position_jitterdodge(0.4), shape=21) + 
+    geom_smooth(aes(color=Symbiont, group=Symbiont), method="loess", size=2, alpha=0.4, se=FALSE)+
+    xlab("Temperature") + 
+    scale_color_manual(name="Symbiont", values=c("orange","brown4", "gray"))+
+    ylab(expression(bold(paste("Value")))) +
+    #ylim(0, 0.05)+
+    theme_classic() + 
+    theme(
+      legend.position="right",
+      axis.title=element_text(face="bold", size=16),
+      axis.text=element_text(size=12, color="black"), 
+      legend.title=element_text(face="bold", size=14), 
+      legend.text=element_text(size=12)
+      ); metric_plot1a
+
+ggsave("figures/pr_sdr/pr_resp.png", metric_plot1a, dpi=300, w=5, h=5, units="in")
+```
+
+View metrics for P:R ratio. 
+```{r}
+metric_plot2<-pr_data_calc%>%
+   filter(Date=="20230624")%>%
+    filter(Metric %in% c("ratio_high", "ratio_low"))%>%
+  filter(Value>0)%>%
+  
+    ggplot(., aes(x = Temperature, y = Value)) +
+    facet_wrap(~Metric)+
+    geom_hline(yintercept=0, linetype="dashed", color="black", size=0.75)+
+    geom_point(aes(group=interaction(Temperature, Symbiont), color=Symbiont), size=3, fill="white", position = position_jitterdodge(0.4), shape=21) + 
+    geom_smooth(aes(color=Symbiont, group=Symbiont), method="loess", size=2, alpha=0.4, se=FALSE)+
+    xlab("Temperature") + 
+    scale_color_manual(name="Symbiont", values=c("orange","brown4", "gray"))+
+    ylab(expression(bold(paste("Value")))) +
+    #ylim(0, 0.05)+
+    theme_classic() + 
+    theme(
+      legend.position="right",
+      axis.title=element_text(face="bold", size=16),
+      axis.text=element_text(size=12, color="black"), 
+      legend.title=element_text(face="bold", size=14), 
+      legend.text=element_text(size=12)
+      ); metric_plot2
+
+ggsave("figures/pr_sdr/pr_ratio.png", metric_plot2, dpi=300, w=7, h=5, units="in")
+```
+
+## Run anova on differences. 
+
+Test P:R ratio at high light. 
+```{r}
+model<-pr_data_calc%>%
+  filter(Date=="20230624")%>%
+  filter(Metric=="ratio_high")%>%
+  filter(Value>0)%>%
+  #filter(!c(Value>4 & Symbiont=="C" & Temperature==33))%>% #remove outliers 
+  #filter(!c(Value<0 & Symbiont=="WT" & Temperature==30))%>% #remove outliers 
+  #filter(!Value<0)%>% #remove outliers 
+  aov(Value~Temperature*Symbiont, data=.)
+
+summary(model)
+```
+No effects. 
+
+Look at 30C under high light specifically. 
+```{r}
+model<-pr_data_calc%>%
+  filter(Date=="20230624")%>%
+  filter(Metric=="ratio_high")%>%
+  filter(Value>0)%>%
+  aov(Value~Symbiont, data=.)
+
+summary(model)
+
+TukeyHSD(model, "Symbiont")
+```
+No effects. 
+
+Test P:R ratios under low light. 
+```{r}
+model<-pr_data_calc%>%
+  filter(Date=="20230624")%>%
+  filter(Metric=="ratio_low")%>%
+  filter(Value>0)%>%
+  aov(Value~Temperature*Symbiont, data=.)
+
+summary(model)
+
+TukeyHSD(model, "Symbiont")
+```
+No effects. 
+
+Test light enhanced respiration. 
+```{r}
+model<-pr_data_calc%>%
+  filter(Date=="20230624")%>%
+  filter(Metric=="ler_inverse")%>%
+  aov(Value~Temperature*Symbiont, data=.)
+
+summary(model)
+
+TukeyHSD(model, "Temperature")
+```
+There is an effect of temperature on LER. LER is lower at 27 than it is at 30 and 33. 
+
+Test P gross at high light. 
+```{r}
+model<-pr_data_calc%>%
+  filter(Date=="20230624")%>%
+  filter(Metric=="p_gross_high")%>%
+  aov(Value~Temperature*Symbiont, data=.)
+
+summary(model)
+```
+P gross at high light differs by temperature. 
+
+Test P gross at low light. 
+```{r}
+model<-pr_data_calc%>%
+  filter(Date=="20230624")%>%
+  filter(Metric=="p_gross_low")%>%
+  aov(Value~Temperature*Symbiont, data=.)
+
+summary(model)
+
+TukeyHSD(model, "Temperature")
+```
+There is an effect of temperature at low light. P net is higher as temperature increases. 
+
+Test P net under low light. 
+```{r}
+model<-pr_data_calc%>%
+  filter(Date=="20230624")%>%
+  filter(Metric=="p_net_low")%>%
+  aov(Value~Temperature*Symbiont, data=.)
+
+summary(model)
+
+TukeyHSD(model, "Temperature")
+```
+There is an effect of temperature on P net at low light. P net increases as temperature increases. 
+
+```{r}
+model<-pr_data_calc%>%
+  filter(Date=="20230624")%>%
+  filter(Metric=="p_net_high")%>%
+  aov(Value~Symbiont*Temperature, data=.)
+
+summary(model)
+
+emm<-emmeans(model, ~ Symbiont | Temperature)
+pairs(emm)
+```
+There is an effect of temperature on P net at high light. Almost a symbiont effect. 
+
+## Test effect of light 
+
+Test effect of light on P:R ratio. 
+```{r}
+model<-pr_data_calc%>%
+  filter(Metric %in% c("ratio_low", "ratio_high"))%>%
+  filter(Date=="20230624")%>%
+  filter(Value>0)%>%
+  aov(Value~Metric*Temperature*Symbiont, data=.)
+
+summary(model)
+
+TukeyHSD(model, "Metric")
+TukeyHSD(model, "Temperature")
+
+```
+Ratios peak at 30C and are higher at high light. Almost an effect of symbiont. 
+
+Test effect of light on P gross.  
+```{r}
+model<-pr_data_calc%>%
+  filter(Metric %in% c("p_gross_low", "p_gross_high"))%>%
+    filter(Date=="20230624")%>%
+  aov(Value~Metric*Temperature*Symbiont, data=.)
+
+summary(model)
+
+TukeyHSD(model, "Metric")
+TukeyHSD(model, "Temperature")
+```
+P gross increases with temperature.
+
+Test effect of light on P net.   
+```{r}
+model<-pr_data_calc%>%
+  filter(Metric %in% c("p_net_low","p_net_high"))%>%
+  filter(Date=="20230624")%>%
+  aov(Value~Metric*Temperature*Symbiont, data=.)
+
+summary(model)
+
+TukeyHSD(model, "Metric")
+TukeyHSD(model, "Temperature")
+TukeyHSD(model, "Symbiont")
+
+emm<-emmeans(model, ~ Symbiont | Metric | Temperature)
+pairs(emm)
+```
+P net increases with temperature and is higher in high light. P net is higher in WT than mix. 
+
+
+
