@@ -188,6 +188,8 @@ for(file in 1:length(file.names)) { # for every file in list start at the first 
   }
   
 }
+
+xx <- Photo.R 
 ```
 
 Calculate average temperature of each run and export to a table to confirm temperatures are not different between PAR values.    
@@ -286,8 +288,8 @@ Sample.Info$unique<-paste(Sample.Info$Plate,"-",Sample.Info$Chamber.ID)
 
 oxygen$Sample.ID<-Sample.Info$Sample.ID[match(oxygen$unique, Sample.Info$unique)]
 oxygen$SDR<-Sample.Info$SDR[match(oxygen$unique, Sample.Info$unique)]
-oxygen$Tank<-Sample.Info$Tank[match(oxygen$unique, Sample.Info$unique)]
-oxygen$Symbiont<-Sample.Info$Symbiont[match(oxygen$unique, Sample.Info$unique)]
+#oxygen$Tank<-Sample.Info$Tank[match(oxygen$unique, Sample.Info$unique)]
+#oxygen$Symbiont<-Sample.Info$Symbiont[match(oxygen$unique, Sample.Info$unique)]
 oxygen$Type<-Sample.Info$Type[match(oxygen$unique, Sample.Info$unique)]
 oxygen$Salinity<-Sample.Info$Salinity[match(oxygen$unique, Sample.Info$unique)]
 oxygen$Temperature<-Sample.Info$Temperature[match(oxygen$unique, Sample.Info$unique)]
@@ -299,9 +301,9 @@ oxygen$Org.Number<-Sample.Info$Org.Number[match(oxygen$unique, Sample.Info$uniqu
 Remove samples that have inaccurate slope extraction for respiration rates (determined by PDF output files)  
 
 ```{r}
-oxygen<-oxygen%>%
-  mutate(code=paste(Plate, Chamber.ID))%>%
-  filter(!c(Plate==2 & Light==1))%>%
+#oxygen<-oxygen%>%
+#  mutate(code=paste(Plate, Chamber.ID))%>%
+#  filter(!c(Plate==2 & Light==1))%>%
   #filter(!code=="3 D4")%>%
   #filter(!code=="7 D6")%>%
   #filter(!code=="8 B4")%>%
@@ -313,7 +315,7 @@ oxygen<-oxygen%>%
   #filter(!code=="6 D5")%>%
   #filter(!code=="8 C4")%>%
   #filter(!code=="10 D4")%>%
-  select(!code)
+#  select(!code)
 ```
 
 Account for volume to obtain umol per minute.   
@@ -322,7 +324,7 @@ Account for volume to obtain umol per minute.
 #Account for chamber volume to convert from umol L-1 m-1 to umol m-1. This removes per Liter
 oxygen$P.umol.min <- oxygen$P.umol.L.min * oxygen$Volume #calculate
 
-plot(as.factor(oxygen$Plate), oxygen$P.umol.L.min, xlab="Plate", ylab="rate") #photo rates
+plot(as.factor(oxygen$Light), oxygen$P.umol.L.min, xlab="Plate", ylab="rate") #photo rates
 ```
 
 Subtract blank values. Average blank calculated for each run. Display mean blank value.  
@@ -336,12 +338,12 @@ mean(blank_data$P.umol.min, na.rm=TRUE) #mean P phase blanks
 plot(as.factor(blank_data$Plate), blank_data$P.umol.L.min, xlab="Plate", ylab="rate") #photo rates
 
 #remove outlier blank 
-blank_data<-blank_data%>%
-  filter(P.umol.L.min>-1.5) 
+#blank_data<-blank_data%>%
+#  filter(P.umol.L.min>-1.5) 
 
 plot(as.factor(blank_data$Plate), blank_data$P.umol.L.min, xlab="Plate", ylab="rate") #photo rates after outlier removal
 
-photo.blnk <- aggregate(P.umol.min ~ Date*Plate, data=blank_data, mean) #calculate average blank during light for each run
+photo.blnk <- aggregate(P.umol.min ~ Date*Plate*Light, data=blank_data, mean) #calculate average blank during light for each run
 colnames(photo.blnk)[colnames(photo.blnk) == 'P.umol.min'] <- 'P.Blank.umol.min' #rename to specify blank for R
 
 oxygen <- full_join(oxygen, photo.blnk) #add R blanks to master
@@ -371,17 +373,40 @@ oxygen.bio$P.nmol.org.min <- oxygen.bio$P.umol.org.min*1000 #calculate nanomoles
 
 Plot values.  
 ```{r}
-plot(oxygen.bio$P.nmol.org.min)
+plot(oxygen.bio$Org.Number , oxygen.bio$P.nmol.org.min)
+
+#x <- oxygen.bio %>% filter(Org.Number==60)
+
+oxygen.bio %>% ggplot(aes(Org.Number, P.nmol.org.min))+
+  geom_point()+
+  geom_hline(yintercept=0, linetype="dashed", color = "black")+
+  facet_wrap(vars(PAR))+
+  theme_bw()
+
+mean.sem <- oxygen.bio %>%
+  group_by(Org.Number, Light)%>%
+  summarise(mean_se(P.nmol.org.min, mult = 1))
+
+mean.sem$sem <- mean.sem$ymax-mean.sem$ymin
+
+mean.sem %>% ggplot(aes(Org.Number, y), group=Org.Number)+
+  geom_point()+
+  geom_errorbar(aes(ymin=ymin, ymax=ymax), colour="black", width=.1)+
+  geom_hline(yintercept=0, linetype="dashed", color = "black")+
+  facet_wrap(vars(Light))+
+  theme_bw()
+
+x <- oxygen.bio %>% filter(Org.Number==60)
+
+x %>% ggplot(aes(Org.Number, P.nmol.org.min))+
+  geom_point()+
+  geom_hline(yintercept=0, linetype="dashed", color = "black")+
+  facet_wrap(vars(PAR))+
+  theme_bw()
+
+
 ```
 
-Filter out outliers. 
-```{r}
-#oxygen.bio<-oxygen.bio%>%
-#  filter(P.nmol.org.min<0.1)%>%
-#  filter(P.nmol.org.min>-0.1)
-
-#plot(oxygen.bio$P.nmol.org.min)
-```
 
 Add in relevant metadata. 
 ```{r}
