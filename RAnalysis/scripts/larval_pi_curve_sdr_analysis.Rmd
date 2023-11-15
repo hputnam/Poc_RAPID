@@ -1,0 +1,353 @@
+---
+title: "Larval PI Curve Plotting and Analysis" 
+author: "AS Huffmyer"
+date: '2023'
+output:
+  html_document:
+    code_folding: hide
+    toc: yes
+    toc_depth: 6
+    toc_float: yes
+  pdf_document:
+    keep_tex: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+QC all plots, check all blanks for every run 
+
+Need to bootstrap for model fit and for parameter estimates 
+
+# Setup  
+
+Set up workspace, set options, and load required packages.    
+```{r}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r, warning=FALSE, message=FALSE}
+## install packages if you dont already have them in your library
+if ("tidyverse" %in% rownames(installed.packages()) == 'FALSE') install.packages('tidyverse') 
+if ("car" %in% rownames(installed.packages()) == 'FALSE') install.packages('car') 
+if ("lme4" %in% rownames(installed.packages()) == 'FALSE') install.packages('lme4') 
+if ("lmerTest" %in% rownames(installed.packages()) == 'FALSE') install.packages('lmerTest') 
+if ("scales" %in% rownames(installed.packages()) == 'FALSE') install.packages('scales') 
+if ("cowplot" %in% rownames(installed.packages()) == 'FALSE') install.packages('cowplot') 
+if ("ggplot2" %in% rownames(installed.packages()) == 'FALSE') install.packages('ggplot2') 
+if ("effects" %in% rownames(installed.packages()) == 'FALSE') install.packages('effects') 
+if ("emmeans" %in% rownames(installed.packages()) == 'FALSE') install.packages('emmeans') 
+if ("multcomp" %in% rownames(installed.packages()) == 'FALSE') install.packages('multcomp') 
+if ("rTPC" %in% rownames(installed.packages()) == 'FALSE') remotes::install_github("padpadpadpad/rTPC")
+if ("ggstatsplot" %in% rownames(installed.packages()) == 'FALSE') remotes::install_github("IndrajeetPatil/ggstatsplot")
+if ("nls.multstart" %in% rownames(installed.packages()) == 'FALSE') install.packages('nls.multstart')
+if ("broom" %in% rownames(installed.packages()) == 'FALSE') install.packages('broom')
+
+#load packages
+library("ggplot2")
+library("tidyverse")
+library('car')
+library('lme4')
+library('lmerTest')
+library('scales')
+library('cowplot')
+library('rTPC')
+library('ggstatsplot')
+library('nls.multstart')
+library('broom')
+```
+
+# Data visualization and manipulation  
+
+Load data from LoLinR.    
+```{r, warning=FALSE, message=FALSE}
+pi_data<-read.csv("output/pi_curves/calculated_normalized_photo_rates.csv") #load data
+```
+
+Format data. 
+```{r, warning=FALSE, message=FALSE}
+#remove all rows of wells that did not have samples or blanks
+pi_data<-pi_data[!is.na(pi_data$Type),]
+
+#format columns
+pi_data$SDR<-as.factor(pi_data$SDR)
+pi_data$Plate<-as.factor(pi_data$Plate)
+```
+
+Look for outliers in the data.  
+
+```{r}
+boxplot(pi_data$P.nmol.org.min)
+
+boxplot(pi_data$P.nmol.org.min~pi_data$PAR)
+```
+
+Replace any net negative value with 0, since this indicates no photosynthesis. 
+```{r}
+pi_data<-pi_data%>%
+  mutate(P.nmol.org.min=if_else(P.nmol.org.min<0 & PAR>0, 0, P.nmol.org.min)) 
+```
+
+View data. Remove outliers. 
+```{r}
+boxplot(pi_data$P.nmol.org.min~pi_data$PAR)
+
+pi_data<-pi_data%>%filter(P.nmol.org.min<0.02)
+
+boxplot(pi_data$P.nmol.org.min~pi_data$PAR)
+```
+
+Log transform the data.
+```{r}
+pi_data<-pi_data%>%
+  mutate(P.nmol.org.min=log10(P.nmol.org.min+1))
+
+boxplot(pi_data$P.nmol.org.min~pi_data$PAR)
+```
+
+Calculate mean temperature values for each run.    
+
+```{r}
+pi.temps<-read.csv("output/pi_curves/runs_temp.csv")
+pi.temps = subset(pi.temps, select = -c(X) ) #remove empty column
+
+pi_data$Plate<-as.integer(pi_data$Plate)
+```
+
+
+Add temperature data to master data frame.  
+```{r}
+pi_data<-left_join(pi_data,pi.temps)
+
+#round to 0.1°C 
+pi_data<-pi_data%>%
+  mutate(Temp.C=round(Temp.C,1))
+```
+
+Remove PAR 2 due to sensor malfunction. 
+```{r}
+pi_data<-pi_data%>%
+  filter(!PAR=="4")
+```
+
+# Plot photosynthesis over PAR treatments  
+
+Plot data with means   
+```{r}
+pi_plot1<-pi_data %>%
+    group_by(PAR)%>%
+    dplyr::summarise(mean=mean(P.nmol.org.min, na.rm=TRUE), sd=sd(P.nmol.org.min, na.rm=TRUE), N=length(P.nmol.org.min), se=sd/sqrt(N))%>%
+    
+    ggplot(., aes(x = as.factor(PAR), y = mean, group=PAR)) +
+    geom_hline(yintercept=0, linetype="dashed", color="black", linewidth=0.75)+
+    geom_point(aes(group=PAR), size=6, position = position_dodge(0.4)) + 
+    geom_errorbar(aes(ymin=mean-se, ymax=mean+se, group=PAR), width=0, linetype="solid", position=position_dodge(0.4), size=0.8, color="black")+
+    xlab("Light (PAR)") + 
+    ylab(expression(bold(paste("P (nmol ", O[2], " larva"^-1, "min"^-1, ")")))) +
+    #ylim(0, 0.05)+
+    theme_classic() + 
+    theme(
+      legend.position="right",
+      axis.title=element_text(face="bold", size=16),
+      axis.text=element_text(size=12, color="black"), 
+      legend.title=element_text(face="bold", size=14), 
+      legend.text=element_text(size=12)
+      ); pi_plot1
+
+ggsave("figures/pi_curves/pi_means.png", pi_plot1, dpi=300, w=7, h=5, units="in")
+```
+
+Plot data with a loess line   
+```{r}
+pi_plot2<-pi_data %>%
+    
+    ggplot(., aes(x = as.factor(PAR), y = P.nmol.org.min, group=PAR)) +
+    geom_hline(yintercept=0, linetype="dashed", color="black", size=0.75)+
+    geom_smooth(aes(group=1), method="loess", alpha=0.4, se=FALSE, colour="black")+
+    xlab("Light (PAR)") + 
+    ylab(expression(bold(paste("P (nmol ", O[2], " larva"^-1, "min"^-1, ")")))) +
+    #ylim(0, 0.05)+
+    theme_classic() + 
+    theme(
+      legend.position="right",
+      axis.title=element_text(face="bold", size=16),
+      axis.text=element_text(size=12, color="black"), 
+      legend.title=element_text(face="bold", size=14), 
+      legend.text=element_text(size=12)
+      ); pi_plot2
+```
+
+# Apply PI curve calculations and models 
+
+## Look for outliers 
+
+View and remove outliers.   
+```{r, warning=FALSE, message=FALSE}
+#identify outliers by Temperature and Treatment groups
+outlier.plot <- ggbetweenstats(pi_data, PAR, P.nmol.org.min, outlier.tagging = TRUE)
+outlier.plot
+
+ggsave("figures/pi_curves/outliersbygroup.png", outlier.plot, dpi=300, w=8, h=8, units="in")
+
+#set quantile values
+q <- c(0.25, 0.75)
+
+# calculate quantile values by PAR and Treatment groups
+Quants <- pi_data %>%
+  dplyr::group_by(PAR)%>%
+  dplyr::summarise(quant25 = quantile(P.nmol.org.min, probs = q[1], na.rm=TRUE),
+            quant75 = quantile(P.nmol.org.min, probs = q[2], na.rm=TRUE),
+            IQRbyGroup=IQR(P.nmol.org.min, na.rm=TRUE))
+
+
+#Calculate Quantile upper and lower ranges 
+Quants$upper <-  Quants$quant75+1.5*Quants$IQRbyGroup # Upper Range  
+Quants$lower <- Quants$quant25-1.5*Quants$IQRbyGroup # Lower Range
+
+#join outlier cutoffs with rate data
+pi_data <- left_join(pi_data, Quants)
+
+#remove outliers from rates
+pi_data <- pi_data %>%
+  filter(P.nmol.org.min < upper) %>%
+  filter(P.nmol.org.min > lower) #%>%
+  #filter(rate < 0.125)
+
+# Visualize data following outlier removal
+outlier.plot2 <- ggbetweenstats(pi_data, PAR, P.nmol.org.min, outlier.tagging = TRUE)
+outlier.plot2
+
+ggsave("figures/pi_curves/removed_outliersbygroup.png", outlier.plot2, dpi=300, w=8, h=8, units="in")
+```
+
+## Fitting PI Curves 
+
+Scripts for this section based on E5 PI curve analysis in the time series repository. 
+
+Define data 
+```{r}
+#specify data
+pi_data$PAR <- as.numeric(pi_data$PAR)
+pi_data$Pc <- as.numeric(pi_data$P.nmol.org.min)
+```
+
+Define PI curve function as a nonlinear Least Squares regression of a quadratic fit, test nls fit
+
+Aquatic Photosynthesis, Falkowski   
+Pmax = max photosynthesis (Am from Bayesian script)  
+alpha = quantum yeild (AQY from Bayesian script)  
+I/E = irradiance (PAR from Bayesian script)  
+Rd = dark respiration   
+Ik = saturating irradiance 
+
+Next run NLS models.
+
+Using fixed initial values (not using, but keeping for reference):  
+
+```{r}
+nest <- nest_legacy
+unnest <- unnest_legacy
+
+pi_data$species<-"Pocillopora"
+
+nls_data <- pi_data %>% 
+   #mutate(new_Pc=Pc+1)%>%
+   group_by(species) %>%
+   nest(-species) %>%
+   mutate(model1 = map(data, ~ 
+                        nls(Pc ~ (Am*((AQY*PAR)/(sqrt(Am^2 + (AQY*PAR)^2)))-Rd), data=., start=list(Am=0.05,  AQY=0.001, Rd=-0.02)) %>%
+                             tidy %>%
+                             dplyr::select(term, estimate) %>% 
+                             spread(term, estimate))) %>%
+  unnest(model1) %>%
+  mutate(Ik = Am/AQY) %>%
+  mutate(Ic=(Am*Rd)/(AQY*(sqrt(Am^2-Rd^2))))
+
+nls_data
+
+#save 
+pi_results<-nls_data
+
+pi_results
+```
+
+Using flexible initial values based on input data: not working currently
+
+```{r}
+nest <- nest_legacy
+unnest <- unnest_legacy
+
+pi_data$species<-"Pocillopora"
+
+#pi_data<-pi_data%>%
+  #mutate(new_Pc=Pc+1)
+
+nls_data <- pi_data %>% 
+   group_by(species) %>%
+   nest(-species) %>%
+   mutate(model1 = map(data, ~ 
+                         nls(Pc ~ (Am*((AQY*PAR)/(sqrt(Am^2 + (AQY*PAR)^2)))-Rd), data=., start=list(Am=(max(.$Pc)-min(.$Pc)),  AQY=0.001, Rd=-min(.$Pc)), trace=TRUE) %>%
+                              tidy %>%
+                              dplyr::select(term, estimate) %>% 
+                              spread(term, estimate))) %>%
+  unnest(model1) %>%
+  mutate(Ik = Am/AQY) %>%
+  mutate(Ic=(Am*Rd)/(AQY*(sqrt(Am^2-Rd^2))))
+
+#save 
+pi_results<-nls_data
+
+pi_results
+```
+
+Plot curve over data points.  
+```{r}
+augmented <- pi_data %>% 
+  nest(-species) %>% 
+  mutate(
+    fit = map(data, ~ nls(Pc ~ (Am*((AQY*PAR)/(sqrt(Am^2 + (AQY*PAR)^2)))-Rd), data=., start=list(Am=0.5,  AQY=0.001, Rd=.4))),
+    augmented = map(fit, augment),
+  ) %>% 
+  unnest(augmented)
+
+#all together
+curve_plot1<-augmented %>%
+  group_by(species)%>%
+  qplot(PAR, Pc, data = ., geom = 'point') +
+  geom_line(aes(y=.fitted), size=2)+
+  theme(legend.position="right")+
+  theme_classic();curve_plot1
+
+ggsave("figures/pi_curves/nls_curves_all.png", width=6, height=6, dpi=500)
+```
+
+Plot PI curve metrics. 
+
+```{r}
+metrics_plot1<-pi_results%>%
+  pivot_longer(values_to="Value", names_to="Parameter", cols=c(Am:Ic))%>%
+  filter(Parameter %in% c("Ik", "Ic"))%>%
+  
+  ggplot(aes(x=species, y=Value, color=species))+
+    facet_wrap(~Parameter)+
+    geom_point(aes(), size=4) +
+    theme_classic()+
+    theme(legend.position="none");metrics_plot1
+
+metrics_plot1a<-pi_results%>%
+  pivot_longer(values_to="Value", names_to="Parameter", cols=c(Am:Ic))%>%
+  filter(!Parameter=="Ik")%>%
+  filter(!Parameter=="Ic")%>%
+  
+  ggplot(aes(x=species, y=Value, color=species))+
+    facet_wrap(~Parameter)+
+    geom_point(aes(), size=4) +
+    theme_classic();metrics_plot1a
+
+metrics_plot<-plot_grid(metrics_plot1, metrics_plot1a, nrow=1, ncol=2, rel_widths=c(0.8,1))
+
+ggsave("figures/pi_curves/parameters.png", metrics_plot, width=10, height=6, dpi=300)
+```
+
+
+
+

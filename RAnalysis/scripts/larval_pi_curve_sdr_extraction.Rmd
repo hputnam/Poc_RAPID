@@ -1,0 +1,388 @@
+---
+title: "Larval Photosynthesis Rates Extraction with LoLinR - PI Curves"
+author: "AS Huffmyer"
+date: '2023'
+output:
+  html_document:
+    code_folding: hide
+    toc: yes
+    toc_depth: 6
+    toc_float: yes
+  pdf_document:
+    keep_tex: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+## Setup  
+
+Set up workspace, set options, and load required packages.    
+```{r}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r, warning=FALSE, message=FALSE}
+## install packages if you dont already have them in your library
+if ("devtools" %in% rownames(installed.packages()) == 'FALSE') install.packages('devtools') 
+library(devtools)
+if ("segmented" %in% rownames(installed.packages()) == 'FALSE') install.packages('segmented') 
+if ("plotrix" %in% rownames(installed.packages()) == 'FALSE') install.packages('plotrix') 
+if ("gridExtra" %in% rownames(installed.packages()) == 'FALSE') install.packages('gridExtra') 
+if ("LoLinR" %in% rownames(installed.packages()) == 'FALSE') install_github('colin-olito/LoLinR') 
+if ("lubridate" %in% rownames(installed.packages()) == 'FALSE') install.packages('lubridate') 
+if ("chron" %in% rownames(installed.packages()) == 'FALSE') install.packages('chron') 
+if ("plyr" %in% rownames(installed.packages()) == 'FALSE') install.packages('plyr') 
+if ("dplyr" %in% rownames(installed.packages()) == 'FALSE') install.packages('dplyr') 
+if ("stringr" %in% rownames(installed.packages()) == 'FALSE') install.packages('stringr') 
+if ("Rmisc" %in% rownames(installed.packages()) == 'FALSE') install.packages('Rmisc') 
+if ("respR" %in% rownames(installed.packages()) == 'FALSE') install.packages('respR') 
+
+
+#load packages
+library("ggplot2")
+library("segmented")
+library("plotrix")
+library("gridExtra")
+library("LoLinR")
+library("lubridate")
+library("chron")
+library('plyr')
+library('dplyr')
+library('stringr')
+library('Rmisc')
+library('respR')
+library("tidyverse")
+
+```
+
+## Read in files  
+
+Set the path of all respirometry files within the R project.   
+
+```{r, warning=FALSE, message=FALSE}
+path.p<-"data/pi_curves/runs" #location of files
+```
+
+Bring in the file names.
+```{r, warning=FALSE, message=FALSE}
+# bring in the respiration file names
+file.names<-basename(list.files(path = path.p, pattern = "csv$", recursive = TRUE)) 
+```
+
+Bring in the run metadata. 
+```{r}
+run_metadata<-read.csv("data/pi_curves/PI_curves_SDR_Run_Info.csv")
+```
+
+## Extract photosynthesis rates  
+
+Generate photosynthesis data frames.
+
+```{r, warning=FALSE, message=FALSE}
+#generate a 7 column dataframe with specific column names
+#photosynthesis
+Photo.R <- data.frame(matrix(NA, ncol=7))
+colnames(Photo.R) <- c("Date", "Plate","Sample.ID","Chamber.ID","Light", "Intercept", "umol.L.min")
+
+Photo.Rb <- data.frame(matrix(NA, ncol=7))
+colnames(Photo.Rb) <- c("Date", "Plate","Sample.ID","Chamber.ID","Light", "Intercept", "umol.L.min")
+
+```
+
+Load in the sample information file. It is important to have chambers in the order "A1, B1, C1, D1", rather than "A1, A2, A3, A4".  
+
+Read in sample and run information and merge into a master metadata file. 
+```{r}
+# Load PI curve sample metadata (i.e., which larvae were in which runs)
+Sample.Info <- read_csv(file = "data/pi_curves/PI_curves_SDR_Sample_Info.csv")%>%
+  select(!Notes)
+
+rename <- Sample.Info$Chamber.ID
+samp <- Sample.Info$Sample.ID
+
+plate <- as.numeric(str_sub(file.names, 31, 32))
+date <- str_sub(file.names, 4, str_length(file.names)-28) #grab date from file name
+
+# Load PI curve run metadata (i.e., light levels and interval times for each run)
+Run.Info <- read_csv(file = "data/pi_curves/PI_curves_SDR_Run_Info.csv")
+
+Light_Values <- Run.Info$Light_Level
+
+# Join all coral and run metadata
+metadata <- full_join(Sample.Info, Run.Info) %>%
+  mutate(Date = as_date(as.character(Date), format = "%Y%m%d"))
+
+#starttime<-Run.Info$IntervalStart
+#endtime<-Run.Info$IntervalStop
+```
+
+```{r}
+plate
+Light_Values
+#starttime
+#endtime
+date
+```
+
+Run loop to extract slopes from photosynthesis data from each light level in each file name/plate. 
+
+```{r, results=FALSE, warning=FALSE, message=FALSE}
+
+for(file in 1:length(file.names)) { # for every file in list start at the first and run this following function
+  
+  for (i in Light_Values) { #in every file, for each light value 
+    
+  Photo.Data <-read.table(file.path(path.p,file.names[file]), skip = 56, header=T, sep=",", na.string="NA", fill = TRUE, as.is=TRUE, fileEncoding="latin1") #reads in the data files
+  Photo.Data$Temp <- Photo.Data[,31] #assigns temp column
+  Photo.Data$Time.Min <- seq.int(from=0, to=((nrow(Photo.Data)*0.25)-0.25), by = 0.25) #set time in min
+  
+  # extract start and end times for the respective plate 
+  
+  starttime<-Run.Info%>%
+    select(Plate, Light_Level, IntervalStart)%>%
+    filter(Plate==plate[file])%>%
+    filter(Light_Level==i)%>%
+    select(IntervalStart)%>%
+    as.data.frame()
+
+   starttime<-starttime[1,1]
+   
+   endtime<-Run.Info%>%
+    select(Plate, Light_Level, IntervalStop)%>%
+    filter(Plate==plate[file])%>%
+    filter(Light_Level==i)%>%
+    select(IntervalStop)%>%
+    as.data.frame()
+
+   endtime<-endtime[1,1]
+   
+  #filter by light interval - need to bind in dataframe to tell it which start and end time to use 
+  Photo.Data <- Photo.Data %>% #filters data by interval for light 
+     filter(Time.Min > starttime)%>%
+     filter(Time.Min < endtime) 
+  
+  Photo.Data.N <- Photo.Data[,3:26] #subset desired columns
+  
+  #add column names back in 
+  Photo.Data.N<-as.data.frame(Photo.Data.N)
+  
+  for(j in 1:(ncol(Photo.Data.N))){
+    model <- rankLocReg(
+      xall=Photo.Data$Time.Min, yall=as.numeric(Photo.Data.N[, j]), 
+      alpha=0.4, method="pc", verbose=TRUE) #extract slopes, percentile rank method with minimum window size of 0.4. This means that in order to fit a slope, it has to encompass at least 40% of available datapoints. 
+    
+    pdf(paste0("output/pi_curves/PhotosynthesisPlots/",date[file], "_Plate",plate[file],"_",rename[j],"_light", Light_Values[i],"_regression_trunc.pdf")) #generate output file names
+    plot(model)
+    dev.off()
+    
+    Photo.Rb[j,1] <- as.character(date[file]) #stores the date
+    Photo.Rb[j,2] <- as.character(plate[file]) #stores the run number
+    Photo.Rb[j,3] <- as.character(samp[j]) #stores the sample ID
+    Photo.Rb[j,4] <- as.character(rename[j]) #stores the chamber ID
+    Photo.Rb[j,5] <- as.character(i) #stores the chamber ID
+    Photo.Rb[j,6:7] <- model$allRegs[i,c(4,5)] #inserts slope and intercept in the dataframe
+    
+  }
+  
+  Photo.R <- rbind(Photo.R, Photo.Rb) #bind final data frame
+  }
+  
+}
+```
+
+Calculate average temperature of each run and export to a table.
+```{r}
+# list files 
+file.names<-basename(list.files(path = path.p, pattern = "csv$", recursive = TRUE)) 
+
+#generate matrix to populate
+Temp.P <- data.frame(matrix(NA, ncol=4))
+colnames(Temp.P) <- c("Date", "Plate","Temp.C", "Light")
+
+Temp.Pb <- data.frame(matrix(NA, ncol=4))
+colnames(Temp.Pb) <- c("Date", "Plate","Temp.C", "Light")
+
+#read in temps and generate mean values for each step of the light curve  
+for(file in 1:length(file.names)) { 
+  
+  for(i in Light_Values) {# for every file in list start at the first and run this following function
+  
+    Temp.Data <-read.table(file.path(path.p,file.names[file]), skip = 56, header=T, sep=",", na.string="NA", fill = TRUE, as.is=TRUE, fileEncoding="latin1") #reads in the data files
+  Temp.Data$Temp <- Temp.Data[,31] #assigns temp column
+  Temp.Data$Time.Min <- seq.int(from=0, to=((nrow(Temp.Data)*0.25)-0.25), by = 0.25) #set time in min
+  
+  starttime<-Run.Info%>%
+    select(Plate, Light_Level, IntervalStart)%>%
+    filter(Plate==plate[file])%>%
+    filter(Light_Level==i)%>%
+    select(IntervalStart)%>%
+    as.data.frame()
+
+   starttime<-starttime[1,1]
+   
+   endtime<-Run.Info%>%
+    select(Plate, Light_Level, IntervalStop)%>%
+    filter(Plate==plate[file])%>%
+    filter(Light_Level==i)%>%
+    select(IntervalStop)%>%
+    as.data.frame()
+
+   endtime<-endtime[1,1]
+   
+  #filter by light interval - need to bind in dataframe to tell it which start and end time to use 
+  Temp.Data <- Temp.Data %>% #filters data by interval for light 
+     filter(Time.Min > starttime)%>%
+     filter(Time.Min < endtime) 
+  
+    Temp.Pb[j,1] <- as.character(date[file]) #stores the date
+    Temp.Pb[j,2] <- as.character(plate[file]) #stores the run number
+    Temp.Pb[j,3] <- mean(Temp.Data$Temp) #stores the sample ID
+    Temp.Pb[j,4] <- mean(Light_Values[i]) #stores the sample ID
+    
+    
+    Temp.P <- rbind(Temp.P, Temp.Pb) #bind final data frame
+    Temp.P <- na.omit(Temp.P)
+  
+}
+
+}
+write.csv(Temp.P, paste0("output/pi_curves/runs_temp.csv")) #save respiration rate data
+```
+
+Save photosynthesis data frames.  
+
+```{r, results=FALSE, warning=FALSE, message=FALSE}
+Photo.R <- Photo.R[-1,] #remove empty row
+
+write.csv(Photo.R, paste0("output/pi_curves/larval_pi_curves_sdr_rates_raw.csv")) #save respiration rate data
+
+plot(Photo.R$umol.L.min~as.factor(Photo.R$Plate)*as.factor(Photo.R$Light), side = 2, las = 2, xlab="" )
+
+plot(Photo.R$umol.L.min)
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+Photo.Rates <- read.csv(file = "output/pi_curves/larval_pi_curves_sdr_rates_raw.csv") #read file back in so slopes don't have to be generated every time
+Photo.Rates = subset(Photo.Rates, select = -c(X) ) #remove empty column
+
+#format "run" column
+Photo.Rates<-Photo.Rates %>%
+  mutate(Plate = str_sub(Plate, 1, -1))
+Photo.Rates$Plate<-as.integer(Photo.Rates$Plate) #format as # rather than run #, set as integer
+```
+
+## Standardize and normalize  
+
+Merge rates files with sample info for testing and manipulation.  
+
+```{r, warning=FALSE, message=FALSE}
+oxygen<-full_join(Sample.Info, Photo.Rates) #add photosynthesis data
+colnames(oxygen)[colnames(oxygen) == 'Intercept'] <- 'Photo.Intercept' #rename to specify R
+colnames(oxygen)[colnames(oxygen) == 'umol.L.min'] <- 'P.umol.L.min' #rename to specify R
+
+#make unique ID column
+oxygen$unique<-paste(oxygen$Plate,"-",oxygen$Chamber.ID)
+Sample.Info$unique<-paste(Sample.Info$Plate,"-",Sample.Info$Chamber.ID)
+
+oxygen$Sample.ID<-Sample.Info$Sample.ID[match(oxygen$unique, Sample.Info$unique)]
+oxygen$SDR<-Sample.Info$SDR[match(oxygen$unique, Sample.Info$unique)]
+oxygen$Type<-Sample.Info$Type[match(oxygen$unique, Sample.Info$unique)]
+oxygen$Salinity<-Sample.Info$Salinity[match(oxygen$unique, Sample.Info$unique)]
+oxygen$Run<-Sample.Info$Run[match(oxygen$unique, Sample.Info$unique)]
+oxygen$Volume<-Sample.Info$Volume[match(oxygen$unique, Sample.Info$unique)]
+oxygen$Org.Number<-Sample.Info$Org.Number[match(oxygen$unique, Sample.Info$unique)]
+
+plot(oxygen$P.umol.L.min)
+```
+
+Remove samples that have inaccurate slope extraction for respiration rates (determined by PDF output files)  
+
+```{r}
+#oxygen<-oxygen%>%
+#  mutate(code=paste(Plate, Chamber.ID))%>%
+#  filter(!c(code=="3 A5" & Light==6))%>%
+#  filter(!c(code=="3 B3" & Light==2))%>%
+#  filter(!c(code=="3 C2" & Light==11))%>%
+#  filter(!c(code=="3 C5" & Light==5))%>%
+#  filter(!c(code=="3 D3" & Light==9))%>%
+#  filter(!c(code=="3 D5" & Light==3))%>%
+#  filter(!c(code=="4 A2" & Light==3))%>%
+#  filter(!c(code=="4 D1" & Light==3))%>%
+#  select(!code)
+```
+
+Account for volume to obtain umol per minute.   
+
+```{r, results=TRUE, warning=FALSE, message=FALSE}
+#Account for chamber volume to convert from umol L-1 m-1 to umol m-1. This removes per Liter
+oxygen$P.umol.min <- oxygen$P.umol.L.min * oxygen$Volume #calculate
+
+plot(as.factor(oxygen$Plate), oxygen$P.umol.L.min, xlab="Plate", ylab="rate") #photo rates
+
+oxygen$code<-paste0(oxygen$Plate, "_", oxygen$Light)
+```
+
+Subtract blank values. Average blank calculated for each run. Display mean blank value.  
+```{r}
+blank_data <- subset(oxygen, Type == "Blank") #subset to blank data only
+
+blank_data$code<-paste0(blank_data$Plate, "_", blank_data$Light)
+
+plot(as.factor(blank_data$code), blank_data$P.umol.min, xlab="Plate", ylab="umol O2 min-1") #blanks 
+
+plot(blank_data$P.umol.min, xlab="Plate", ylab="umol O2 min-1") #blanks 
+
+#filter blank values 
+blank_data<-blank_data%>%
+  filter(P.umol.min> -0.0015)
+
+plot(as.factor(blank_data$code), blank_data$P.umol.min, xlab="Plate", ylab="umol O2 min-1") #blanks during dark phase
+
+#display mean blank values
+mean(blank_data$P.umol.min, na.rm=TRUE) #mean P phase blanks
+
+photo.blnk <- aggregate(P.umol.min ~ code, data=blank_data, mean) #calculate average blank during light for each run
+colnames(photo.blnk)[colnames(photo.blnk) == 'P.umol.min'] <- 'P.Blank.umol.min' #rename to specify blank for R
+
+oxygen <- full_join(oxygen, photo.blnk, by=c("code")) #add R blanks to master
+```
+
+Subtract blank values to generate a "corrected" value for umol O2 min-1.  
+
+```{r, warning=FALSE, message=FALSE}
+oxygen$P.umol.min.corr<-oxygen$P.umol.min-oxygen$P.Blank.umol.min #subtract R blanks
+```
+
+```{r}
+plot(oxygen$P.umol.min.corr)
+```
+
+Normalize to biologically relevant measure. Here, normalize to number of larvae. This can be substituted or changed for larval size/volume as well.  
+
+```{r, warning=FALSE, message=FALSE}
+oxygen.bio <- oxygen %>% filter(Type == "Sample") #isolate only biological samples and drop unused factor levels 
+oxygen.bio <- droplevels(oxygen.bio) #drop unused factor levels
+
+#respiration
+oxygen.bio$P.umol.org.min <- oxygen.bio$P.umol.min.corr/oxygen.bio$Org.Number #calculate oxygen per organism 
+oxygen.bio$P.nmol.org.min <- oxygen.bio$P.umol.org.min*1000 #calculate nanomoles 
+
+```
+
+Plot values.  
+```{r}
+plot(oxygen.bio$P.nmol.org.min)
+```
+
+Add in relevant metadata. 
+```{r}
+oxygen.bio$PAR<-Run.Info$Light_Value[match(oxygen.bio$Light, Run.Info$Light_Level)]
+```
+
+Save as .csv file.  
+```{r, warning=FALSE, message=FALSE}
+write.csv(oxygen.bio, paste0("output/pi_curves/calculated_normalized_photo_rates.csv")) #save final file
+```
+
+
