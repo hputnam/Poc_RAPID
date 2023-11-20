@@ -103,7 +103,7 @@ rename <- Sample.Info$Chamber.ID
 samp <- Sample.Info$Sample.ID
 
 plate <- as.numeric(str_sub(file.names, 25, 26))
-date <- str_sub(file.names, 4, str_length(file.names)-35) #grab date from file name
+date <- str_sub(file.names, 4, str_length(file.names)-37) #grab date from file name
 
 # Load PI curve run metadata (i.e., light levels and interval times for each run)
 Run.Info <- read_csv(file = "data/pr_sdr/PR_SDR_Run_Info.csv")
@@ -278,7 +278,7 @@ Photo.Rates$Plate<-as.integer(Photo.Rates$Plate) #format as # rather than run #,
 Merge rates files with sample info for testing and manipulation.  
 
 ```{r, warning=FALSE, message=FALSE}
-oxygen<-full_join(Sample.Info, Photo.Rates) #add photosynthesis data
+oxygen<-left_join(Sample.Info, Photo.Rates) #add photosynthesis data
 colnames(oxygen)[colnames(oxygen) == 'Intercept'] <- 'Photo.Intercept' #rename to specify R
 colnames(oxygen)[colnames(oxygen) == 'umol.L.min'] <- 'P.umol.L.min' #rename to specify R
 
@@ -373,14 +373,11 @@ oxygen.bio$P.nmol.org.min <- oxygen.bio$P.umol.org.min*1000 #calculate nanomoles
 
 Plot values.  
 ```{r}
-plot(oxygen.bio$Org.Number , oxygen.bio$P.nmol.org.min)
 
-#x <- oxygen.bio %>% filter(Org.Number==60)
-
-oxygen.bio %>% ggplot(aes(Org.Number, P.nmol.org.min))+
+oxygen.bio %>% ggplot(aes(Phenotype, P.nmol.org.min))+
   geom_point()+
   geom_hline(yintercept=0, linetype="dashed", color = "black")+
-  facet_wrap(vars(PAR))+
+  facet_wrap(vars(Light))+
   theme_bw()
 
 mean.sem <- oxygen.bio %>%

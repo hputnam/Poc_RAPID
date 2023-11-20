@@ -1,0 +1,72 @@
+---
+title: "Survivorship"
+author: "HM Putnam"
+date: "2023-11-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+load libraries
+```{r }
+library(survival)
+library(ggsurvfit)
+```
+
+load data
+```{r }
+larvae20231112 <-read.csv("data/survivorship_data.csv", header=T, na.strings="NA") #load larval survivorship dataset
+
+```
+
+Calculate proportion survival
+```{r }
+#Analyze with a binomial vector of successes and failures. Successes is the number of living larvae ("larvae") and failure is the number of larvae that have died from the initial timepoint (Initial larvae - larvae at timepoint) called "Failures". 
+
+#calculation of failure and successes
+#failure is just the number of larvae - the initial 15 value
+larvae20231112$failures <- 20 - larvae20231112$larvae
+
+
+#calculation of survivorship by proportion
+larvae20231112$prop<-(larvae20231112$larvae)/(20)
+
+#generate a summary table of larval density over time in ambient, wildtype, and high historys
+
+larvae20231112_surv_table <- plyr::ddply(larvae20231112, c("timepoint", "treatment"), dplyr::summarise, 
+                 N    = length(prop[!is.na(prop)]),
+                 se = std.error(prop *100, na.rm = TRUE),
+                 mean = mean(prop *100, na.rm=TRUE) 
+)
+larvae20231112_surv_table 
+
+
+```
+
+```{r }
+
+ggplot(data=larvae20231112_surv_table, aes(x=as.factor(timepoint), y=mean, color = as.factor(treatment))) + 
+   scale_colour_manual(name="Larval Treatment", values=c( "blue", "red2")) +
+                   #labels=c("28°C", "36°C",))+
+  #geom_line(aes(linetype = treatment), position=position_dodge(0.2), size=1) + 
+  geom_point(size=3, position=position_dodge(0.2)) + 
+  geom_errorbar(aes(ymin=mean-se, ymax=mean+se), 
+                width=0.0, size=1, position=position_dodge(0.2), linetype=1)+ 
+  theme_bw() +
+  labs(linetype="Treatment")+
+  ylim(0,100)+
+  ylab(expression(bold(paste("Larval Survival (%)")))) + 
+  xlab(expression(bold("Hours")))
+
+
+```
+GLM testing survivorship
+```{r }
+#larvae20231112
+model.surv<-glm(prop~treatment *timepoint , data = larvae20231112) #model
+
+summary(model.surv)
+
+```
