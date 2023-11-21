@@ -1,5 +1,5 @@
 ---
-title: "Larval Photosynthesis Rates Extraction with LoLinR - Hawaii 2023 - PR Measurements"
+title: "Larval Photosynthesis Rates Extraction with LoLinR - Moorea Pocillopora 2023 - PR Measurements"
 author: "AS Huffmyer"
 date: '2023'
 output:
@@ -267,7 +267,7 @@ plot(Photo.R$umol.L.min~as.factor(Photo.R$Plate)*as.factor(Photo.R$Light), side 
 Photo.Rates <- read.csv(file = "output/pr_sdr_rates_raw.csv") #read file back in so slopes don't have to be generated every time
 Photo.Rates = subset(Photo.Rates, select = -c(X) ) #remove empty column
 
-#format "run" column
+#format  column
 Photo.Rates<-Photo.Rates %>%
   mutate(Plate = str_sub(Plate, 1, -1))
 Photo.Rates$Plate<-as.integer(Photo.Rates$Plate) #format as # rather than run #, set as integer
@@ -286,24 +286,43 @@ colnames(oxygen)[colnames(oxygen) == 'umol.L.min'] <- 'P.umol.L.min' #rename to 
 oxygen$unique<-paste(oxygen$Plate,"-",oxygen$Chamber.ID)
 Sample.Info$unique<-paste(Sample.Info$Plate,"-",Sample.Info$Chamber.ID)
 
-oxygen$Sample.ID<-Sample.Info$Sample.ID[match(oxygen$unique, Sample.Info$unique)]
-oxygen$SDR<-Sample.Info$SDR[match(oxygen$unique, Sample.Info$unique)]
-#oxygen$Tank<-Sample.Info$Tank[match(oxygen$unique, Sample.Info$unique)]
-#oxygen$Symbiont<-Sample.Info$Symbiont[match(oxygen$unique, Sample.Info$unique)]
-oxygen$Type<-Sample.Info$Type[match(oxygen$unique, Sample.Info$unique)]
-oxygen$Salinity<-Sample.Info$Salinity[match(oxygen$unique, Sample.Info$unique)]
-oxygen$Temperature<-Sample.Info$Temperature[match(oxygen$unique, Sample.Info$unique)]
-oxygen$Run<-Sample.Info$Run[match(oxygen$unique, Sample.Info$unique)]
-oxygen$Volume<-Sample.Info$Volume[match(oxygen$unique, Sample.Info$unique)]
-oxygen$Org.Number<-Sample.Info$Org.Number[match(oxygen$unique, Sample.Info$unique)]
+# oxygen$Sample.ID<-Sample.Info$Sample.ID[match(oxygen$unique, Sample.Info$unique)]
+# oxygen$SDR<-Sample.Info$SDR[match(oxygen$unique, Sample.Info$unique)]
+# oxygen$Type<-Sample.Info$Type[match(oxygen$unique, Sample.Info$unique)]
+# oxygen$Salinity<-Sample.Info$Salinity[match(oxygen$unique, Sample.Info$unique)]
+# oxygen$Temperature<-Sample.Info$Temperature[match(oxygen$unique, Sample.Info$unique)]
+# oxygen$Run<-Sample.Info$Run[match(oxygen$unique, Sample.Info$unique)]
+# oxygen$Volume<-Sample.Info$Volume[match(oxygen$unique, Sample.Info$unique)]
+# oxygen$Org.Number<-Sample.Info$Org.Number[match(oxygen$unique, Sample.Info$unique)]
 ```
 
-Remove samples that have inaccurate slope extraction for respiration rates (determined by PDF output files)  
-
+Check for Outliers in the raw data
 ```{r}
-#oxygen<-oxygen%>%
-#  mutate(code=paste(Plate, Chamber.ID))%>%
-#  filter(!c(Plate==2 & Light==1))%>%
+oxygen %>% 
+  filter(Type=="Blank") %>%
+  ggplot(aes(Phenotype, P.umol.L.min))+
+  geom_point()+
+  geom_hline(yintercept=0, linetype="dashed", color = "black")+
+  facet_wrap(vars(Light))+
+  theme_bw()
+
+oxygen %>% 
+  filter(Type=="Sample") %>%
+  ggplot(aes(Phenotype, P.umol.L.min))+
+  geom_point()+
+  geom_hline(yintercept=0, linetype="dashed", color = "black")+
+  facet_wrap(vars(Light))+
+  theme_bw()
+
+
+
+```
+
+Remove samples that have inaccurate slope extraction for respiration rates (determined by PDF output files and outlier plots)  
+```{r}
+oxygen<-oxygen%>%
+  mutate(code=paste(Plate, Chamber.ID))%>%
+  filter(!c(Plate==2 & Chamber.ID=="D5")) #%>%
   #filter(!code=="3 D4")%>%
   #filter(!code=="7 D6")%>%
   #filter(!code=="8 B4")%>%
@@ -316,6 +335,25 @@ Remove samples that have inaccurate slope extraction for respiration rates (dete
   #filter(!code=="8 C4")%>%
   #filter(!code=="10 D4")%>%
 #  select(!code)
+
+oxygen %>% 
+  filter(Type=="Blank") %>%
+  ggplot(aes(Phenotype, P.umol.L.min))+
+  geom_point()+
+  geom_hline(yintercept=0, linetype="dashed", color = "black")+
+  facet_wrap(vars(Light))+
+  theme_bw()
+
+oxygen %>% 
+  filter(Type=="Sample") %>%
+  ggplot(aes(Phenotype, P.umol.L.min))+
+  geom_point()+
+  geom_hline(yintercept=0, linetype="dashed", color = "black")+
+  facet_wrap(vars(Light))+
+  theme_bw()
+
+
+
 ```
 
 Account for volume to obtain umol per minute.   
@@ -324,24 +362,51 @@ Account for volume to obtain umol per minute.
 #Account for chamber volume to convert from umol L-1 m-1 to umol m-1. This removes per Liter
 oxygen$P.umol.min <- oxygen$P.umol.L.min * oxygen$Volume #calculate
 
-plot(as.factor(oxygen$Light), oxygen$P.umol.L.min, xlab="Plate", ylab="rate") #photo rates
+oxygen %>% 
+  filter(Type=="Sample") %>%
+  ggplot(aes(Phenotype, P.umol.min))+
+  geom_point()+
+  geom_hline(yintercept=0, linetype="dashed", color = "black")+
+  facet_wrap(vars(Light))+
+  theme_bw()
 ```
 
 Subtract blank values. Average blank calculated for each run. Display mean blank value.  
 ```{r}
 blank_data <- subset(oxygen, Type == "Blank") #subset to blank data only
-plot(as.factor(blank_data$Plate), blank_data$P.umol.min, xlab="Plate", ylab="umol O2 min-1") #blanks during dark phase
+
+blank_data %>% 
+  ggplot(aes(Phenotype, P.umol.min))+
+  geom_point()+
+  geom_hline(yintercept=0, linetype="dashed", color = "black")+
+  facet_wrap(vars(Light))+
+  theme_bw()
 
 #display mean blank values
-mean(blank_data$P.umol.min, na.rm=TRUE) #mean P phase blanks
+mean.blank.data <- blank_data %>% group_by(Phenotype,Light) %>%
+summarise(mean = mean(P.umol.min, na.rm=TRUE)) #mean P phase blanks
 
-plot(as.factor(blank_data$Plate), blank_data$P.umol.L.min, xlab="Plate", ylab="rate") #photo rates
+mean.blank.data %>% 
+  ggplot(aes(Phenotype, mean))+
+  geom_point()+
+  geom_hline(yintercept=0, linetype="dashed", color = "black")+
+  facet_wrap(vars(Light))+
+  theme_bw()
 
-#remove outlier blank 
-#blank_data<-blank_data%>%
-#  filter(P.umol.L.min>-1.5) 
+#remove high outlier blanks 
+blank_data<-blank_data %>%
+  filter(!P.umol.min>5.1e-05) 
 
-plot(as.factor(blank_data$Plate), blank_data$P.umol.L.min, xlab="Plate", ylab="rate") #photo rates after outlier removal
+#remove low outlier blanks 
+blank_data<-blank_data %>%
+  filter(P.umol.min>-5.1e-05) 
+
+blank_data %>% 
+  ggplot(aes(Phenotype, P.umol.min))+
+  geom_point()+
+  geom_hline(yintercept=0, linetype="dashed", color = "black")+
+  facet_wrap(vars(Light))+
+  theme_bw()
 
 photo.blnk <- aggregate(P.umol.min ~ Date*Plate*Light, data=blank_data, mean) #calculate average blank during light for each run
 colnames(photo.blnk)[colnames(photo.blnk) == 'P.umol.min'] <- 'P.Blank.umol.min' #rename to specify blank for R
@@ -356,7 +421,14 @@ oxygen$P.umol.min.corr<-oxygen$P.umol.min-oxygen$P.Blank.umol.min #subtract R bl
 ```
 
 ```{r}
-plot(oxygen$Light, oxygen$P.umol.min.corr)
+
+oxygen %>% 
+  ggplot(aes(Phenotype, P.umol.min.corr))+
+  geom_point()+
+  geom_hline(yintercept=0, linetype="dashed", color = "black")+
+  facet_wrap(vars(Light))+
+  theme_bw()
+
 ```
 
 Normalize to biologically relevant measure. Here, normalize to number of larvae. This can be substituted or changed for larval size/volume as well.  
@@ -380,34 +452,54 @@ oxygen.bio %>% ggplot(aes(Phenotype, P.nmol.org.min))+
   facet_wrap(vars(Light))+
   theme_bw()
 
-mean.sem <- oxygen.bio %>%
-  group_by(Org.Number, Light)%>%
-  summarise(mean_se(P.nmol.org.min, mult = 1))
+oxygen.bio %>% group_by(Light, Phenotype) %>%
+  summarize(max = max(P.nmol.org.min))
 
-mean.sem$sem <- mean.sem$ymax-mean.sem$ymin
+oxygen.bio %>% group_by(Light, Phenotype) %>%
+  summarize(min = min(P.nmol.org.min))
 
-mean.sem %>% ggplot(aes(Org.Number, y), group=Org.Number)+
+# Remove outliers
+oxygen.bio<-oxygen.bio%>%
+  mutate(code=paste(Plate, Chamber.ID))%>%
+  filter(!c(Plate==2 & Chamber.ID=="A1")) 
+
+
+oxygen.bio %>% ggplot(aes(Phenotype, P.nmol.org.min))+
   geom_point()+
-  geom_errorbar(aes(ymin=ymin, ymax=ymax), colour="black", width=.1)+
   geom_hline(yintercept=0, linetype="dashed", color = "black")+
   facet_wrap(vars(Light))+
   theme_bw()
 
-x <- oxygen.bio %>% filter(Org.Number==60)
-
-x %>% ggplot(aes(Org.Number, P.nmol.org.min))+
-  geom_point()+
-  geom_hline(yintercept=0, linetype="dashed", color = "black")+
-  facet_wrap(vars(PAR))+
-  theme_bw()
-
-
 ```
 
 
-Add in relevant metadata. 
+2-way ANOVA
 ```{r}
-oxygen.bio$PAR<-Run.Info$Light_Value[match(oxygen.bio$Light, Run.Info$Light_Level)]
+mod1 <- lm(P.nmol.org.min ~as.factor(Phenotype)*as.factor(Light), data=oxygen.bio )
+summary(mod1)
+
+hist(mod1$residuals)
+plot(mod1$fitted.values, mod1$residuals)
+
+
+oxygen.bio.mean <- oxygen.bio %>% 
+        group_by(Phenotype, Light) %>% 
+        summarise(y= mean(P.nmol.org.min))
+
+supp.labs <- c("Photosynthesis (Pnet)", "Respiration (LEDR)")
+names(supp.labs) <- c("1", "2")
+
+ggplot(oxygen.bio.mean, aes(x = Phenotype, y = y, shape = Phenotype)) +
+  geom_point(data = oxygen.bio, aes(Phenotype, P.nmol.org.min, group = Phenotype)) +
+  geom_point(data = oxygen.bio.mean, size = 4, shape = 3, color="black")+
+  geom_hline(yintercept=0, linetype="dashed", color = "black")+
+  facet_wrap(vars(Light), labeller = labeller(Light = supp.labs))+
+  ylab("Rate (nmol larva-1 min-1)")+
+  theme_bw()
+
+
+
+
 ```
 
 Save as .csv file.  
