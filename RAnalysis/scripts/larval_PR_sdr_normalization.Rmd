@@ -27,7 +27,9 @@ if ("dplyr" %in% rownames(installed.packages()) == 'FALSE') install.packages('dp
 if ("stringr" %in% rownames(installed.packages()) == 'FALSE') install.packages('stringr') 
 if ("Rmisc" %in% rownames(installed.packages()) == 'FALSE') install.packages('Rmisc') 
 if ("respR" %in% rownames(installed.packages()) == 'FALSE') install.packages('respR') 
-
+if ("tidyverse" %in% rownames(installed.packages()) == 'FALSE') install.packages('tidyverse') 
+if ("emmeans" %in% rownames(installed.packages()) == 'FALSE') install.packages('emmeans') 
+if ("ggpubr" %in% rownames(installed.packages()) == 'FALSE') install.packages('ggpubr') 
 
 #load packages
 library("ggplot2")
@@ -441,6 +443,7 @@ larval.respo <- ggarrange(larval.photo, larval.resp,
                           larval.Pgross, larval.PtoR, ncol = 4, nrow = 1)
 
 ggsave("output/Nov_NewMoon_Larval_Metabolism.pdf", larval.respo, width = 12, height = 4)
+ggsave("output/Nov_NewMoon_Larval_Metabolism.jpg", larval.respo, width = 12, height = 4)
 
 ```
 
@@ -450,3 +453,22 @@ write.csv(oxygen.bio.green, paste0("output/cohort_pr_calculated_normalized_photo
 ```
 
 
+Comparison of Green and Red Phenotypes
+```{r, warning=FALSE, message=FALSE}
+oxygen.bio.phenotypes <- oxygen.bio 
+
+cohort.pheno <- oxygen.bio.phenotypes %>% 
+  ggplot(aes(as.factor(Light), P.nmol.org.min))+
+  geom_point()+
+  geom_hline(yintercept=0, linetype="dashed", color = "black")+
+  scale_x_discrete(labels=c("1" = "Pnet", "2" = "LEDR"),name ="Cohort")+
+  theme(axis.text.x = element_blank())+
+  facet_wrap(vars(Cohort_Phenotype), ncol=4)+
+  ylab("Oxygen Flux (nmol larva-1 min-1)")+
+  theme_bw()
+cohort.pheno 
+ggsave("output/Nov_NewMoon_Phenotype_Cohort_Metabolism.pdf", cohort.pheno , width = 6, height = 4)
+ggsave("output/Nov_NewMoon_Phenotype_Cohort_Metabolism.jpg", cohort.pheno , width = 6, height = 4)
+
+
+```
