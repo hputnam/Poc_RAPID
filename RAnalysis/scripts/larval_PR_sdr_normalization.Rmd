@@ -43,6 +43,8 @@ library('stringr')
 library('Rmisc')
 library('respR')
 library('tidyverse')
+library('emmeans')
+library('ggpubr')
 
 ```
 
@@ -317,43 +319,128 @@ oxygen.bio.green %>%
 
 #subset into photo data and resp data
 Photo.bio.green <- oxygen.bio.green %>%
-  filter(Light == 1)
+  filter(Light == 1) 
+
+Photo.bio.green <- Photo.bio.green %>%
+  filter(!unique == "202311196A1")
+
 
 mod1 <- lm(P.nmol.org.min ~ as.factor(Cohort), data=Photo.bio.green )
 summary(mod1)
 hist(mod1$residuals)
 plot(mod1$fitted.values, mod1$residuals)
 
+posthoc1 <- emmeans(mod1, pairwise ~ Cohort)
+posthoc1
+
+#Respiration Analysis
 Resp.bio.green <- oxygen.bio.green %>%
   filter(Light == 2)
 
-#remove positive values for respiration
+
 Resp.bio.green <- Resp.bio.green %>%
-  filter(P.nmol.org.min < 0 )
+  filter(!unique == "202311196A1")
+
+#remove positive values for respiration
+#Resp.bio.green <- Resp.bio.green %>%
+#  filter(P.nmol.org.min < 0 )
 
 mod2 <- lm(P.nmol.org.min ~as.factor(Cohort), data=Resp.bio.green )
 summary(mod2)
 hist(mod2$residuals)
 plot(mod2$fitted.values, mod2$residuals)
+posthoc2 <- emmeans(mod2, pairwise ~ Cohort)
+posthoc2
 
+#Pgross = Pnet - -Rdark
+
+oxygen.bio.green$group <- paste0(oxygen.bio.green$Date, "_",oxygen.bio.green$Chamber.ID)
+
+Pgross.calcs <- as.data.frame(cbind(Resp.bio.green$unique, Resp.bio.green$Cohort, Resp.bio.green$P.nmol.org.min,Photo.bio.green$unique, Photo.bio.green$P.nmol.org.min))
+
+colnames(Pgross.calcs) <- c("Resp.Ids", "Cohort","Resp.P.nmol.org.min","Photo.Ids", "Photo.P.nmol.org.min")
+
+Pgross.calcs$check <- ifelse(Pgross.calcs$Resp.Ids == Pgross.calcs$Photo.Ids, 'True', 
+                      ifelse(data$Resp.Ids != data$Photo.Ids, "False"))
+
+Pgross.calcs$Resp.P.nmol.org.min <- as.numeric(as.character(Pgross.calcs$Resp.P.nmol.org.min))
+Pgross.calcs$Photo.P.nmol.org.min <- as.numeric(as.character(Pgross.calcs$Photo.P.nmol.org.min))
+
+
+Pgross.calcs$Pgross <-Pgross.calcs$Photo.P.nmol.org.min-Pgross.calcs$Resp.P.nmol.org.min
+Pgross.calcs$PtoR <-Pgross.calcs$Pgross/(abs(Pgross.calcs$Resp.P.nmol.org.min))
 
 plot.oxygen.bio.green <- rbind(Photo.bio.green,Resp.bio.green)
+# supp.labs <- c("Photosynthesis (Pnet)", "Respiration (LEDR)")
+# names(supp.labs) <- c("1", "2")
 
-supp.labs <- c("Photosynthesis (Pnet)", "Respiration (LEDR)")
-names(supp.labs) <- c("1", "2")
-
-plot.oxygen.bio.green %>% ggplot(., aes(x = Cohort, y = P.nmol.org.min)) +
-  geom_point(data = plot.oxygen.bio.green, aes(Cohort, P.nmol.org.min), color="grey") +
-  #geom_jitter(width=0.05) +
+larval.photo <- Photo.bio.green %>% ggplot(., aes(x = Cohort, y = P.nmol.org.min)) +
+  geom_point(data = Photo.bio.green, aes(Cohort, P.nmol.org.min), color="grey") +
   stat_summary(fun=mean, shape=1, size=0.5, color="black") +
   stat_summary(fun.data=mean_se, color = 'black', geom = "errorbar", width=0)+
+  annotate("text", x = c(20231112.2,20231113.2,20231115.2), y = c(0.00215, 0.0011, -0.0005), label = c("A", "A", "B"))+
   geom_hline(yintercept=0, linetype="dashed", color = "black")+
-  facet_wrap(vars(Light), labeller = labeller(Light = supp.labs))+
-  ylab("Rate (nmol larva-1 min-1)")+
-  theme_bw()
+  ylim(-0.003,0.005)+
+  ylab("Photosynthesis (Pnet, nmol larva-1 min-1)")+
+  theme_bw()+
+  theme(axis.title.x=element_blank())
+larval.photo
+
+larval.resp <- Resp.bio.green %>% ggplot(., aes(x = Cohort, y = P.nmol.org.min)) +
+  geom_point(data = Resp.bio.green, aes(Cohort, P.nmol.org.min), color="grey") +
+  stat_summary(fun=mean, shape=1, size=0.5, color="black") +
+  stat_summary(fun.data=mean_se, color = 'black', geom = "errorbar", width=0)+
+  annotate("text", x = c(20231112.2,20231113.2,20231115.2), y = c(-0.0023, -0.00095, -0.0019), label = c("A", "B", "AB"))+
+  geom_hline(yintercept=0, linetype="dashed", color = "black")+
+  ylim(-0.003,0.005)+
+  ylab("Respiration (LEDR, nmol larva-1 min-1)")+
+  theme_bw()+
+  theme(axis.title.x=element_blank())
+larval.resp
+
+mod3 <- lm(Pgross ~as.factor(Cohort), data=Pgross.calcs )
+summary(mod3)
+hist(mod3$residuals)
+plot(mod3$fitted.values, mod3$residuals)
+posthoc3 <- emmeans(mod3, pairwise ~ Cohort)
+posthoc3
+
+larval.Pgross <- Pgross.calcs %>% ggplot(., aes(x = as.numeric(Cohort), y = Pgross)) +
+  geom_point(data = Pgross.calcs, aes(as.numeric(Cohort), Pgross), color="grey") +
+  stat_summary(fun=mean, shape=1, size=0.5, color="black") +
+  stat_summary(fun.data=mean_se, color = 'black', geom = "errorbar", width=0)+
+  annotate("text", x = c(20231112.2,20231113.2,20231115.2), y = c(0.0035, 0.0018, 0.0017), label = c("A", "B", "B"))+
+  geom_hline(yintercept=0, linetype="dashed", color = "black")+
+  ylim(-0.003,0.005)+
+  ylab("Photosynthesis (Pgross, nmol larva-1 min-1)")+
+  theme_bw()+
+  theme(axis.title.x=element_blank())
+larval.Pgross
+
+mod4 <- lm(PtoR ~as.factor(Cohort), data=Pgross.calcs )
+summary(mod4)
+hist(mod4$residuals)
+plot(mod4$fitted.values, mod4$residuals)
+posthoc4 <- emmeans(mod4, pairwise ~ Cohort)
+posthoc4
+
+larval.PtoR <- Pgross.calcs %>% ggplot(., aes(x = as.numeric(Cohort), y = PtoR)) +
+  geom_point(data = Pgross.calcs, aes(as.numeric(Cohort), PtoR), color="grey") +
+  stat_summary(fun=mean, shape=1, size=0.5, color="black") +
+  stat_summary(fun.data=mean_se, color = 'black', geom = "errorbar", width=0)+
+  annotate("text", x = c(20231112.2,20231113.2,20231115.2), y = c(2.1, 2.3, 1), label = c("A", "A", "B"))+
+  geom_hline(yintercept=0, linetype="dashed", color = "black")+
+  ylim(-6,6)+
+  ylab("Pgross : LEDR")+
+  theme_bw()+
+  theme(axis.title.x=element_blank())
+larval.PtoR
 
 
+larval.respo <- ggarrange(larval.photo, larval.resp, 
+                          larval.Pgross, larval.PtoR, ncol = 4, nrow = 1)
 
+ggsave("output/Nov_NewMoon_Larval_Metabolism.pdf", larval.respo, width = 12, height = 4)
 
 ```
 
