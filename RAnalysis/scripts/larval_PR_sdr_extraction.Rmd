@@ -62,7 +62,7 @@ library('tidyverse')
 Set the path of all respirometry files within the R project.   
 
 ```{r, warning=FALSE, message=FALSE}
-path.p<-"data/pr_sdr/runs" #location of files
+path.p<-"data/pr_sdr/runs/test" #location of files
 ```
 
 Bring in the file names.
@@ -257,7 +257,7 @@ Save photosynthesis data frames.
 ```{r, results=FALSE, warning=FALSE, message=FALSE}
 Photo.R <- Photo.R[-1,] #remove empty row
 
-write.csv(Photo.R, paste0("output/pr_sdr_rates_raw.csv")) #save respiration rate data
+write.csv(Photo.R, paste0("output/20231216_pr_sdr_rates_raw.csv")) #save respiration rate data
 
 plot(Photo.R$umol.L.min~as.factor(Photo.R$Plate)*as.factor(Photo.R$Light), side = 2, las = 2, xlab="" )
 
