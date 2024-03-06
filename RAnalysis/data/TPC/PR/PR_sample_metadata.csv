@@ -1,0 +1,19 @@
+Date,colony_id,Chamber.Channel,Position,Bin.ID,Run,Species,Temp.Cat,Chamber.Vol.L,Notes
+20240305,POM-185,1,4,left,2,P. meandrina,ramp,354,NA
+20240305,BLK-003,2,5,left,2,Blank,ramp,355,NA
+20240305,REC-009,3,6,left,2,Recruit,ramp,366,NA
+20240305,POG-156,4,7,left,2,P. grandis,ramp,340,NA
+20240305,POT-090,5,8,left,2,P. tuahiniensis,ramp,371,NA
+20240305,REC-010,6,9,left,2,Recruit,ramp,376,NA
+20240305,REC-011,7,10,left,2,Recruit,ramp,364,NA
+20240305,POV-069,8,11,left,2,P. verrucosa,ramp,343,NA
+20240305,REC-012,9,12,left,2,Recruit,ramp,368,NA
+20240305,POM-196,10,4,right,2,P. meandrina,ramp,382,NA
+20240305,POG-168,11,5,right,2,P. grandis,ramp,374,NA
+20240305,BLK-004,12,6,right,2,Blank,ramp,371,NA
+20240305,REC-013,13,7,right,2,Recruit,ramp,356,NA
+20240305,POT-030,14,8,right,2,P. tuahiniensis,ramp,346,NA
+20240305,POV-004,15,9,right,2,P. verrucosa,ramp,362,NA
+20240305,REC-014,16,10,right,2,Recruit,ramp,355,NA
+20240305,REC-015,17,11,right,2,Recruit,ramp,349,NA
+20240305,REC-016,18,12,right,2,Recruit,ramp,357,NA

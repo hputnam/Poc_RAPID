@@ -1,0 +1,54 @@
+---
+title: "Apex_TPC_Ramp"
+author: "HM Putnam"
+date: "2024-03-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2)
+library(tidyverse)
+```
+
+
+```{r}
+bath <- read.csv("data/TPC/Adult/21723477_Bath_2024-03-02_17_35_03.csv")
+colnames(bath) <- c("num", "Date.Time", "Temp.C")
+bath$name <- "bath"
+bath <- bath %>%
+  filter(Date.Time > "03/02/2024 13:32:00") %>%
+  filter(Date.Time < "03/02/2024 17:32:00")
+
+
+chamb1 <- read.csv("data/TPC/Adult/21723472_Chamber1_2024-03-02_17_35_38.csv")
+colnames(chamb1) <- c("num", "Date.Time", "Temp.C")
+chamb1$name <- "chamber1"
+chamb1 <- chamb1 %>%
+  filter(Date.Time > "03/02/2024 13:32:00") %>%
+  filter(Date.Time < "03/02/2024 17:32:00")
+
+chamb15 <- read.csv("data/TPC/Adult/21723473_Chamber15_2024-03-02_17_36_12.csv")
+colnames(chamb15) <- c("num", "Date.Time", "Temp.C")
+chamb15$name <- "chamber15"
+chamb15 <- chamb15 %>%
+  filter(Date.Time > "03/02/2024 13:32:00") %>%
+  filter(Date.Time < "03/02/2024 17:32:00")
+
+```
+
+Plot data
+```{r}
+data <- rbind(bath, chamb1, chamb15)
+str(data)
+data$Date.Time<-as.POSIXct(data$Date.Time, format="%m/%d/%Y %H:%M:%S", tz="Pacific/Tahiti")
+str(data)
+
+data %>%
+  ggplot(aes(x = Date.Time, y = Temp.C,color=name)) +
+  geom_point(size = 1) +
+  #scale_x_continuous(breaks = seq(10))+
+  theme_classic()
+
+```
