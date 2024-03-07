@@ -312,10 +312,9 @@ ggplot(aes(x=Temperature, y=Pc, color=Species, group=colony_id.x))+
   theme(legend.position = "none")
 
 pr.out %>% 
-ggplot(aes(x=PAR, y=Pc, color=Species, group=colony_id.x))+ 
+ggplot(aes(x=Temperature, y=Pc, color=Species, group=colony_id.x))+ 
   geom_point()+
   geom_line()+
-  facet_wrap(~ Species*Temp.Cat.x,  ncol = 10)+
-  theme(legend.position = "none")
+   facet_wrap(~ Light,  ncol = 10)
 
 ```
