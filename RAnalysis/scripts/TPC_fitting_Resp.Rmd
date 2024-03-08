@@ -191,12 +191,12 @@ d_fits <- mutate(d_fits, bootstrap = list(rep(NA, n())))
 for(i in 1:nrow(d_fits)){
   temp_data <- d_fits$data[[i]]
   temp_fit <- nls_multstart(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
-                        data = .x,
+                        data = temp_data,
                         iter = c(3,3,3,3),
-                        start_lower = get_start_vals(.x$temp, .x$rate, model_name = 'sharpeschoolhigh_1981') - 1,
-                        start_upper = get_start_vals(.x$temp, .x$rate, model_name = 'sharpeschoolhigh_1981') + 1,
-                        lower = get_lower_lims(.x$temp, .x$rate, model_name = 'sharpeschoolhigh_1981'),
-                        upper = get_upper_lims(.x$temp, .x$rate, model_name = 'sharpeschoolhigh_1981'),
+                        start_lower = get_start_vals(temp_data$temp, temp_data$rate, model_name = 'sharpeschoolhigh_1981') - 1,
+                        start_upper = get_start_vals(temp_data$temp, temp_data$rate, model_name = 'sharpeschoolhigh_1981') + 1,
+                        lower = get_lower_lims(temp_data$temp, temp_data$rate, model_name = 'sharpeschoolhigh_1981'),
+                        upper = get_upper_lims(temp_data$temp, temp_data$rate, model_name = 'sharpeschoolhigh_1981'),
                         supp_errors = 'Y',
                         convergence_count = FALSE)
   boot <- Boot(temp_fit, method = 'residual')
