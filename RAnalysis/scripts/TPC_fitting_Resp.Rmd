@@ -39,6 +39,8 @@ library('car')
 library('scales')
 library('future') ## libraries for parallel processing
 library('furrr') ## libraries for parallel processing
+library('patchwork')
+library('minpack.lm')
 ```
 
 ## Import data
@@ -115,11 +117,11 @@ pb <- progress::progress_bar$new(total = number_of_curves*number_of_models,
 ```{r}
 # fit chosen model formulation in rTPC
 d_fits <- nest(d, data = c(temp, rate)) %>%
-  mutate(sharpeschoolhigh = map(data, ~nls_multstart_progress(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+  mutate(sharpeschoolhigh = map(data, ~nls_multstart(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
                         data = .x,
                         iter = c(3,3,3,3),
-                        start_lower = get_start_vals(.x$temp, .x$rate, model_name = 'sharpeschoolhigh_1981') - 10,
-                        start_upper = get_start_vals(.x$temp, .x$rate, model_name = 'sharpeschoolhigh_1981') + 10,
+                        start_lower = get_start_vals(.x$temp, .x$rate, model_name = 'sharpeschoolhigh_1981') - 1,
+                        start_upper = get_start_vals(.x$temp, .x$rate, model_name = 'sharpeschoolhigh_1981') + 1,
                         lower = get_lower_lims(.x$temp, .x$rate, model_name = 'sharpeschoolhigh_1981'),
                         upper = get_upper_lims(.x$temp, .x$rate, model_name = 'sharpeschoolhigh_1981'),
                         supp_errors = 'Y',
@@ -151,7 +153,7 @@ ggplot(d_preds) +
   geom_point(aes(temp, rate, col = Species), d) +
   #facet_wrap(~curve_id*Species, scales = 'free_y', ncol = 6) +
   theme_bw() +
-  theme(legend.position = 'none') +
+  #theme(legend.position = 'none') +
   scale_color_brewer(type = 'qual', palette = 2) +
   labs(x = 'Temperature (ºC)',
        y = 'Light Enhanced Dark Respiration rate',
@@ -167,5 +169,44 @@ ggplot(d_preds) +
   labs(x = 'Temperature (ºC)',
        y = 'Light Enhanced Dark Respiration rate',
        title = 'sharpeschoolhigh')
+
+```
+
+#calculate TPC metrics by species
+```{r}
+d_params <- pivot_longer(d_fits, names_to = 'model_name', values_to = 'fit', c(sharpeschoolhigh)) %>%
+  mutate(params = map(fit, calc_params)) %>%
+  select(curve_id, Species, model_name, params) %>%
+  unnest(params)
+
+glimpse(d_params)
+
+```
+
+
+```{r}
+d_fits <- mutate(d_fits, bootstrap = list(rep(NA, n())))
+
+# run for loop to bootstrap each refitted model
+for(i in 1:nrow(d_fits)){
+  temp_data <- d_fits$data[[i]]
+  temp_fit <- nls_multstart(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                        data = .x,
+                        iter = c(3,3,3,3),
+                        start_lower = get_start_vals(.x$temp, .x$rate, model_name = 'sharpeschoolhigh_1981') - 1,
+                        start_upper = get_start_vals(.x$temp, .x$rate, model_name = 'sharpeschoolhigh_1981') + 1,
+                        lower = get_lower_lims(.x$temp, .x$rate, model_name = 'sharpeschoolhigh_1981'),
+                        upper = get_upper_lims(.x$temp, .x$rate, model_name = 'sharpeschoolhigh_1981'),
+                        supp_errors = 'Y',
+                        convergence_count = FALSE)
+  boot <- Boot(temp_fit, method = 'residual')
+  d_fits$bootstrap[[i]] <- boot
+  rm(list = c('temp_fit', 'temp_data', 'boot'))
+}
+
+
+
+
+d_fits
 
 ```

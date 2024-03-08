@@ -155,7 +155,7 @@ ggplot(d_preds) +
   geom_point(aes(temp, rate, col = Species), d) +
   #facet_wrap(~curve_id*Species, scales = 'free_y', ncol = 6) +
   theme_bw() +
-  theme(legend.position = 'none') +
+  #theme(legend.position = 'none') +
   scale_color_brewer(type = 'qual', palette = 2) +
   labs(x = 'Temperature (ºC)',
        y = 'Photosynthetic rate',
@@ -171,5 +171,16 @@ ggplot(d_preds) +
   labs(x = 'Temperature (ºC)',
        y = 'Photosynthetic rate',
        title = 'sharpeschoolhigh')
+
+```
+
+#calculate TPC metrics by species
+```{r}
+d_params <- pivot_longer(d_fits, names_to = 'model_name', values_to = 'fit', c(sharpeschoolhigh)) %>%
+  mutate(params = map(fit, calc_params)) %>%
+  select(curve_id, Species, model_name, params) %>%
+  unnest(params)
+
+glimpse(d_params)
 
 ```
