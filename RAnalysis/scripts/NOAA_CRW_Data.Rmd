@@ -1,0 +1,56 @@
+---
+title: "NOAA_CRW_Data"
+author: "HM Putnam"
+date: "2024-03-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+```
+
+
+```{r}
+
+data <- read.table("data/society_archipelago_NOAA_CRW.txt", skip=22,  fill=TRUE)
+
+colnames(data) <- c("YYYY", "MM", "DD", "SST_MIN", "SST_MAX", "SST@90th_HS", "SSTA@90th_HS", "90th_HS>0", "DHW_from_90th_HS>1", "BAA_7day_max")
+
+data$Date.Time <- paste0(data$YYYY,"-",data$MM,"-",data$DD)
+data$Date <- paste0(data$MM,"-",data$DD)
+
+data$Date.Time <-as.Date(data$Date.Time)
+data$Date <- format(data$Date.Time, format="%m-%d")
+#parse_date_time(data$Date, "%m-%d")
+
+str(data)
+```
+
+```{r}
+temp.2019 <- data %>%
+  filter(YYYY==2019)
+  
+temp.2024 <- data %>%
+  filter(YYYY==2024)
+  
+temps <- rbind(temp.2019,temp.2024)
+str(temps)
+
+cols <- c("red", "black")
+
+temps %>%
+ggplot(aes(y=SST_MAX, x=Date, group= as.factor(YYYY), color = as.factor(YYYY)))+
+  geom_point()+
+  geom_line()+
+  #scale_x_date(date_minor_breaks = "1 month")+
+  scale_color_manual(values = c("#ca7dcc","#353436"))+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+
+
+str(temps)
+```
+
+

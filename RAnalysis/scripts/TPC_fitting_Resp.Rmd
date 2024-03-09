@@ -234,5 +234,5 @@ ggplot() +
   theme_bw(base_size = 12) +
   labs(x = 'Temperature (ºC)',
        y = 'Rate') +
-  facet_wrap(~curve_id)
+  facet_wrap(~curve_id, ncol=2)
 ```
