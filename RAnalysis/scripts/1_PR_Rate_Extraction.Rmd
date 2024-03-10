@@ -80,6 +80,15 @@ df <- df %>%
                       labels = as.character(.y$Light_Level)))})) %>%
   mutate(data = map(intervals, ~ unnest(tibble(.), .id = "Light_Level")))
 
+# Calculate the average temperature for each of the internals of Light_Level
+df <- df %>%
+  mutate(avg_temp_interval = map(data, ~ group_by(., Light_Level) %>%
+                                   summarise(avg_temp_interval = mean(Temp, na.rm = TRUE))))
+
+# Extract colony id, temperature and light level information
+temperature_light_level_info <- df %>%
+  select(colony_id, avg_temp_interval) %>%
+  unnest(avg_temp_interval)
 ```
 
 ### Thin data
@@ -105,6 +114,8 @@ df <- df %>%
 # Example of plots
 cowplot::plot_grid(df$data_plot[[2]], df$thin_data_plot[[2]], ncol = 2,
                    labels = c("Example plot: all data", "Example plot: thinned data"))
+
+
 ```
 
 #### The full or thinned data plot for any sample can be accessed like this:
@@ -114,7 +125,7 @@ df %>%
   pull(thin_data_plot)
 ```
 
-# Fit regressions to each interval for each sample
+# Fit regressions to each interval for each sample 
 ```{r} 
 # Define function for fitting LoLinR regressions to be applied to all intervals for all samples
 fit_reg <- function(df) {
@@ -131,9 +142,6 @@ df <- df %>%
     group_by(., Light_Level) %>%
     do(rankLcRg = fit_reg(.))
   }))
-
-# #NEED TO ADD IN CODE TO EXTRACT MEAN TEMPERATURE OF EACH LEVEL
-
 
 ## Now 'regs' contains the fitted local regressions for each interval of each sample's thinned dataset
 
@@ -170,7 +178,7 @@ plot_rankLcRg <- function(colony_id, interval_number) {
 # dev.off()
 ```
 
-### Extract slope of best regression for each interval for each sample
+### Extract slope of best regression for each interval for each sample and join them with temperature_light_level_info
 ```{r}
 #extract slope as rate
 df.out <- df %>% 
@@ -211,9 +219,15 @@ pr <- pr %>%
 
 pr <-pr %>%
   distinct(grouping.id,.keep_all = TRUE)
+
+temperature_light_level_info$grouping.id <- paste0(temperature_light_level_info$colony_id, "-", temperature_light_level_info$Light_Level)
+
+# Join slopes with temperature_light_level_info
+pr <- left_join(temperature_light_level_info, pr, by = "grouping.id")
+
   
 # Write raw data to output file
-write.csv(pr, "output/pi_curve_extracted_rates_Raw.csv")
+#write.csv(pr, "output/pi_curve_extracted_rates_Raw.csv")
 ```
 
 
@@ -283,7 +297,7 @@ length(unique(pr$colony_id.x))
 ```{r}
 # Select variables to write to file
 pr.out <- pr %>% 
-  select(Species, colony_id.x, Light_Level.x, Run, micromol.cm2.s, micromol.cm2.h)
+  select(Species, colony_id.x, avg_temp_interval, Light_Level.x, Run, micromol.cm2.s, micromol.cm2.h)
 length(unique(pr.out$colony_id.x))
 
 pr.out <- pr.out %>%
@@ -299,12 +313,12 @@ write.csv(pr.out, "output/pr_curve_extracted_rates.csv")
 pr.out$PAR <- as.numeric(pr.out$Light) 
 pr.out$Pc <- as.numeric(pr.out$micromol.cm2.s) 
 
-pr.out <- pr.out %>%
-filter(Temperature >20 & Light == 0)#%>%
+#pr.out <- pr.out %>%
+#filter(Temperature >20 & Light == 0)#%>%
 #filter(Temperature <39)
 
 pr.out %>% 
-ggplot(aes(x=Temperature, y=-Pc, color=Species, group=colony_id.x))+ 
+ggplot(aes(x=avg_temp_interval, y=Pc, color=Species, group=colony_id.x))+ 
   geom_point()+
   geom_line()+
   ylab("µmol O2 cm^2 s-1")+
@@ -312,7 +326,7 @@ ggplot(aes(x=Temperature, y=-Pc, color=Species, group=colony_id.x))+
   theme(legend.position = "none")
 
 pr.out %>% 
-ggplot(aes(x=Temperature, y=-Pc, color=Species, group=colony_id.x))+ 
+ggplot(aes(x=avg_temp_interval, y=Pc, color=Species, group=colony_id.x))+ 
   geom_point()+
   geom_line()+
   ylab("µmol O2 cm^2 s-1")+

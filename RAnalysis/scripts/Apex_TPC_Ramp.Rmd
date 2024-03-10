@@ -52,3 +52,35 @@ data %>%
   theme_classic()
 
 ```
+
+PIC
+```{r}
+PIC <- read.csv("data/TPC/Run2_21723472_2024-03-05 20_07_54.csv")
+colnames(PIC) <- c("num", "Date.Time", "Temp.C")
+PIC$name <- "PIC"
+PIC <- PIC %>%
+  filter(Date.Time > "03/04/2024 16:45:00") %>%
+  filter(Date.Time < "03/04/2024 19:00:00")
+
+PIC %>%
+  ggplot(aes(x = Date.Time, y = Temp.C, color=name)) +
+  geom_point(size = 1) +
+  #scale_x_continuous(breaks = seq(10))+
+  theme_classic()
+```
+
+Run2
+```{r}
+Run2 <- read.csv("data/TPC/Run2_21723472_2024-03-05 20_07_54.csv")
+colnames(Run2) <- c("num", "Date.Time", "Temp.C")
+Run2$name <- "Run2"
+Run2 <- Run2 %>%
+  filter(Date.Time > "03/05/2024 13:15:00") %>%
+  filter(Date.Time < "03/05/2024 19:56:00")
+
+Run2 %>%
+  ggplot(aes(x = Date.Time, y = Temp.C, color=name)) +
+  geom_point(size = 1) +
+  #scale_x_continuous(breaks = seq(10))+
+  theme_classic()
+```
