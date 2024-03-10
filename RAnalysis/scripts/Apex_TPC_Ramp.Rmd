@@ -84,3 +84,20 @@ Run2 %>%
   #scale_x_continuous(breaks = seq(10))+
   theme_classic()
 ```
+
+
+Run3
+```{r}
+Run3 <- read.csv("data/TPC/Run3_21723472_2024-03-09_20_34_46.csv")
+colnames(Run3) <- c("num", "Date.Time", "Temp.C")
+Run3$name <- "Run3"
+Run3 <- Run3 %>%
+  filter(Date.Time > "03/09/2024 12:45:00") %>%
+  filter(Date.Time < "03/09/2024 20:29:00")
+
+Run3 %>%
+  ggplot(aes(x = Date.Time, y = Temp.C, color=name)) +
+  geom_point(size = 1) +
+  #scale_x_continuous(breaks = seq(10))+
+  theme_classic()
+```

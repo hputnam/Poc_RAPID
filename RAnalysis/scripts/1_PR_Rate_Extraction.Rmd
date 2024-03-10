@@ -209,6 +209,7 @@ length(unique(pr$colony_id))
 nrow(distinct(pr))
 #pr <-distinct(pr)
 pr <- pr %>%
+  filter(!Light_Level.y=="ramp0")%>%
   filter(!Light_Level.y=="ramp1")%>%
   filter(!Light_Level.y=="ramp2")%>%
   filter(!Light_Level.y=="ramp3")%>%

@@ -1,12 +1,12 @@
 ---
-title: "Photosynthesis TPC fitting"
+title: "TPC fitting"
 authors: Hollie Putnam 
 edited by: Hollie Putnam 
 date: 20220829
 output: html_document
 ---
 
-# PR data from heatwave timepoint 1 corals
+# PR data 
 ```{r setup, include = FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
@@ -47,8 +47,14 @@ library('minpack.lm')
 ```{r, warning = FALSE}
 data <- read.csv("output/pr_curve_extracted_rates.csv")
 str(data)
-data$Temperature <- as.numeric(data$Temperature)
+data$Temperature <- as.numeric(data$avg_temp_interval)
 str(data)
+
+data <- data %>%
+  arrange(colony_id.x) %>%
+  group_by(colony_id.x) %>%
+  mutate(curve_id = group_indices())
+
 
 data %>% 
 ggplot(aes(x=Temperature, y=micromol.cm2.s, color=Species, group=colony_id.x))+ 
@@ -68,10 +74,10 @@ d <- data %>%
 d$micromol.cm2.s <- -d$micromol.cm2.s
 d$micromol.cm2.s <- replace(d$micromol.cm2.s, d$micromol.cm2.s<0,0)
 
-d <- d[,-c(1,3,6,7,9)]
+d <- d[,-c(1,4,6,7,9)]
 str(d)
 
-colnames(d) <- c("Species", "curve_id", "temp","rate")
+colnames(d) <- c("Species", "colony_id", "temp","rate","curve_id")
 d$curve_id <- as.numeric(d$curve_id)
 str(d)
 
@@ -162,7 +168,7 @@ ggplot(d_preds) +
 ggplot(d_preds) +
   geom_line(aes(temp, .fitted, col = Species, group=curve_id)) +
   geom_point(aes(temp, rate, col = Species), d) +
-  facet_wrap(~curve_id*Species, scales = 'free_y', ncol = 2) +
+  facet_wrap(~Species,  ncol = 4) +
   theme_bw() +
   theme(legend.position = 'none') +
   scale_color_brewer(type = 'qual', palette = 2) +
@@ -235,4 +241,27 @@ ggplot() +
   labs(x = 'Temperature (ºC)',
        y = 'Rate') +
   facet_wrap(~curve_id, ncol=2)
+```
+
+```{r}
+# get tidied parameters using broom::tidy
+# get confidence intervals of parameters
+d_fits <- mutate(d_fits, params = map(nls_fit, broom::tidy),
+                 cis = map(bootstrap, function(x){
+                   temp <- confint(x, method = 'bca') %>%
+                     as.data.frame() %>%
+                     rename(conf_lower = 1, conf_upper = 2) %>%
+                     rownames_to_column(., var = 'term')
+                   return(temp)
+                   }))
+
+# join parameter and confidence intervals in the same dataset 
+left_join(select(d_fits, curve_id, growth_temp, flux, params) %>% unnest(params),
+          select(d_fits, curve_id, growth_temp, flux, cis) %>% unnest(cis)) %>%
+  ggplot(., aes(curve_id, estimate)) +
+  geom_point(size = 4) +
+  geom_linerange(aes(ymin = conf_lower, ymax = conf_upper)) +
+  theme_bw() +
+  facet_wrap(~term, scales = 'free')
+#> Joining with `by = join_by(curve_id, growth_temp, flux, term)`
 ```
