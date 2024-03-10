@@ -190,78 +190,78 @@ glimpse(d_params)
 ```
 
 
-```{r}
-d_fits <- mutate(d_fits, bootstrap = list(rep(NA, n())))
+<!-- ```{r} -->
+<!-- d_fits <- mutate(d_fits, bootstrap = list(rep(NA, n()))) -->
 
-# run for loop to bootstrap each refitted model
-for(i in 1:nrow(d_fits)){
-  temp_data <- d_fits$data[[i]]
-  temp_fit <- minpack.lm::nlsLM(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
-                        data = temp_data,
-                        start = coef(d_fits$sharpeschoolhigh[[i]]),
-                        lower = get_lower_lims(temp_data$temp, temp_data$rate, model_name = 'sharpeschoolhigh_1981')-1,
-                        upper = get_upper_lims(temp_data$temp, temp_data$rate, model_name = 'sharpeschoolhigh_1981')+1)
-  boot <- Boot(temp_fit, method = 'residual')
-  d_fits$bootstrap[[i]] <- boot
-  rm(list = c('temp_fit', 'temp_data', 'boot'))
-}
+<!-- # run for loop to bootstrap each refitted model -->
+<!-- for(i in 1:nrow(d_fits)){ -->
+<!--   temp_data <- d_fits$data[[i]] -->
+<!--   temp_fit <- minpack.lm::nlsLM(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28), -->
+<!--                         data = temp_data, -->
+<!--                         start = coef(d_fits$sharpeschoolhigh[[i]]), -->
+<!--                         lower = get_lower_lims(temp_data$temp, temp_data$rate, model_name = 'sharpeschoolhigh_1981')-1, -->
+<!--                         upper = get_upper_lims(temp_data$temp, temp_data$rate, model_name = 'sharpeschoolhigh_1981')+1) -->
+<!--   boot <- Boot(temp_fit, method = 'residual') -->
+<!--   d_fits$bootstrap[[i]] <- boot -->
+<!--   rm(list = c('temp_fit', 'temp_data', 'boot')) -->
+<!-- } -->
 
-```
+<!-- ``` -->
 
 
-```{r}
-# get the raw values of each bootstrap
-d_fits <- mutate(d_fits, output_boot = map(bootstrap, function(x) x$t))
+<!-- ```{r} -->
+<!-- # get the raw values of each bootstrap -->
+<!-- d_fits <- mutate(d_fits, output_boot = map(bootstrap, function(x) x$t)) -->
 
-# calculate predictions with a gnarly written function
-d_fits <- mutate(d_fits, preds = map2(output_boot, data, function(x, y){
-  temp <- as.data.frame(x) %>%
-    drop_na() %>%
-    mutate(iter = 1:n()) %>%
-    group_by_all() %>%
-    do(data.frame(temp = seq(min(y$temp), max(y$temp), length.out = 100))) %>%
-    ungroup() %>%
-    mutate(pred = sharpeschoolhigh_1981(temp, r_tref,e,eh,th, tref=28))
-  return(temp)
-}))
+<!-- # calculate predictions with a gnarly written function -->
+<!-- d_fits <- mutate(d_fits, preds = map2(output_boot, data, function(x, y){ -->
+<!--   temp <- as.data.frame(x) %>% -->
+<!--     drop_na() %>% -->
+<!--     mutate(iter = 1:n()) %>% -->
+<!--     group_by_all() %>% -->
+<!--     do(data.frame(temp = seq(min(y$temp), max(y$temp), length.out = 100))) %>% -->
+<!--     ungroup() %>% -->
+<!--     mutate(pred = sharpeschoolhigh_1981(temp, r_tref,e,eh,th, tref=28)) -->
+<!--   return(temp) -->
+<!-- })) -->
 
-# select, unnest and calculate 95% CIs of predictions
-boot_conf_preds <- select(d_fits, curve_id, preds) %>%
-  unnest(preds) %>%
-  group_by(curve_id, temp) %>%
-  summarise(conf_lower = quantile(pred, 0.025),
-            conf_upper = quantile(pred, 0.975),
-            .groups = 'drop')
+<!-- # select, unnest and calculate 95% CIs of predictions -->
+<!-- boot_conf_preds <- select(d_fits, curve_id, preds) %>% -->
+<!--   unnest(preds) %>% -->
+<!--   group_by(curve_id, temp) %>% -->
+<!--   summarise(conf_lower = quantile(pred, 0.025), -->
+<!--             conf_upper = quantile(pred, 0.975), -->
+<!--             .groups = 'drop') -->
 
-ggplot() +
-  geom_line(aes(temp, .fitted), d_preds, col = 'blue') +
-  geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper), boot_conf_preds, fill = 'blue', alpha = 0.3) +
-  geom_point(aes(temp, rate), d, size = 2) +
-  theme_bw(base_size = 12) +
-  labs(x = 'Temperature (ºC)',
-       y = 'Rate') +
-  facet_wrap(~curve_id, ncol=2)
-```
+<!-- ggplot() + -->
+<!--   geom_line(aes(temp, .fitted), d_preds, col = 'blue') + -->
+<!--   geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper), boot_conf_preds, fill = 'blue', alpha = 0.3) + -->
+<!--   geom_point(aes(temp, rate), d, size = 2) + -->
+<!--   theme_bw(base_size = 12) + -->
+<!--   labs(x = 'Temperature (ºC)', -->
+<!--        y = 'Rate') + -->
+<!--   facet_wrap(~curve_id, ncol=2) -->
+<!-- ``` -->
 
-```{r}
-# get tidied parameters using broom::tidy
-# get confidence intervals of parameters
-d_fits <- mutate(d_fits, params = map(nls_fit, broom::tidy),
-                 cis = map(bootstrap, function(x){
-                   temp <- confint(x, method = 'bca') %>%
-                     as.data.frame() %>%
-                     rename(conf_lower = 1, conf_upper = 2) %>%
-                     rownames_to_column(., var = 'term')
-                   return(temp)
-                   }))
+<!-- ```{r} -->
+<!-- # get tidied parameters using broom::tidy -->
+<!-- # get confidence intervals of parameters -->
+<!-- d_fits <- mutate(d_fits, params = map(nls_fit, broom::tidy), -->
+<!--                  cis = map(bootstrap, function(x){ -->
+<!--                    temp <- confint(x, method = 'bca') %>% -->
+<!--                      as.data.frame() %>% -->
+<!--                      rename(conf_lower = 1, conf_upper = 2) %>% -->
+<!--                      rownames_to_column(., var = 'term') -->
+<!--                    return(temp) -->
+<!--                    })) -->
 
-# join parameter and confidence intervals in the same dataset 
-left_join(select(d_fits, curve_id, growth_temp, flux, params) %>% unnest(params),
-          select(d_fits, curve_id, growth_temp, flux, cis) %>% unnest(cis)) %>%
-  ggplot(., aes(curve_id, estimate)) +
-  geom_point(size = 4) +
-  geom_linerange(aes(ymin = conf_lower, ymax = conf_upper)) +
-  theme_bw() +
-  facet_wrap(~term, scales = 'free')
-#> Joining with `by = join_by(curve_id, growth_temp, flux, term)`
-```
+<!-- # join parameter and confidence intervals in the same dataset  -->
+<!-- left_join(select(d_fits, curve_id, growth_temp, flux, params) %>% unnest(params), -->
+<!--           select(d_fits, curve_id, growth_temp, flux, cis) %>% unnest(cis)) %>% -->
+<!--   ggplot(., aes(curve_id, estimate)) + -->
+<!--   geom_point(size = 4) + -->
+<!--   geom_linerange(aes(ymin = conf_lower, ymax = conf_upper)) + -->
+<!--   theme_bw() + -->
+<!--   facet_wrap(~term, scales = 'free') -->
+<!-- #> Joining with `by = join_by(curve_id, growth_temp, flux, term)` -->
+<!-- ``` -->
