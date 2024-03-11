@@ -55,12 +55,14 @@ data %>%
 
 PIC
 ```{r}
-PIC <- read.csv("data/TPC/Run2_21723472_2024-03-05 20_07_54.csv")
-colnames(PIC) <- c("num", "Date.Time", "Temp.C")
-PIC$name <- "PIC"
-PIC <- PIC %>%
+data <- read.csv("data/TPC/Run4_21723472_2024-03-10_20_37_48.csv")
+colnames(data) <- c("num", "Date.Time", "Temp.C")
+
+PIC <- data %>%
   filter(Date.Time > "03/04/2024 16:45:00") %>%
   filter(Date.Time < "03/04/2024 19:00:00")
+
+PIC$name <- "PIC"
 
 PIC %>%
   ggplot(aes(x = Date.Time, y = Temp.C, color=name)) +
@@ -71,12 +73,10 @@ PIC %>%
 
 Run2
 ```{r}
-Run2 <- read.csv("data/TPC/Run2_21723472_2024-03-05 20_07_54.csv")
-colnames(Run2) <- c("num", "Date.Time", "Temp.C")
-Run2$name <- "Run2"
-Run2 <- Run2 %>%
+Run2 <- data %>%
   filter(Date.Time > "03/05/2024 13:15:00") %>%
   filter(Date.Time < "03/05/2024 19:56:00")
+Run2$name <- "Run2"
 
 Run2 %>%
   ggplot(aes(x = Date.Time, y = Temp.C, color=name)) +
@@ -88,14 +88,26 @@ Run2 %>%
 
 Run3
 ```{r}
-Run3 <- read.csv("data/TPC/Run3_21723472_2024-03-09_20_34_46.csv")
-colnames(Run3) <- c("num", "Date.Time", "Temp.C")
-Run3$name <- "Run3"
-Run3 <- Run3 %>%
+Run3 <- data %>%
   filter(Date.Time > "03/09/2024 12:45:00") %>%
   filter(Date.Time < "03/09/2024 20:29:00")
+Run3$name <- "Run3"
 
 Run3 %>%
+  ggplot(aes(x = Date.Time, y = Temp.C, color=name)) +
+  geom_point(size = 1) +
+  #scale_x_continuous(breaks = seq(10))+
+  theme_classic()
+```
+
+Run4
+```{r}
+Run4 <- data %>%
+  filter(Date.Time > "03/10/2024 13:15:00") %>%
+  filter(Date.Time < "03/10/2024 20:33:00")
+Run4$name <- "Run4"
+
+Run4 %>%
   ggplot(aes(x = Date.Time, y = Temp.C, color=name)) +
   geom_point(size = 1) +
   #scale_x_continuous(breaks = seq(10))+
