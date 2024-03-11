@@ -71,7 +71,9 @@ d <- data %>%
   filter(Light==560) %>%
   filter(!Species == "Recruit") %>%
   filter(!colony_id.x == "POV-053")%>%
-  filter(!colony_id.x == "POV-069")
+  filter(!colony_id.x == "POV-069")%>%
+  filter(!colony_id.x == "POM-195")%>%
+  filter(!colony_id.x == "POT-090")
 
 d$micromol.cm2.s <- d$micromol.cm2.s
 d$micromol.cm2.s <- replace(d$micromol.cm2.s, d$micromol.cm2.s<0,0)

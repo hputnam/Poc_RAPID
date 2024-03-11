@@ -73,7 +73,10 @@ ggplot(aes(x=Temperature, y=micromol.cm2.s, color=Species, group=colony_id.x))+
 ```{r}
 d <- data %>%
   filter(!colony_id.x == "REC-009") %>%
-  filter(!colony_id.x == "REC-017")
+  filter(!colony_id.x == "REC-011") %>%
+  filter(!colony_id.x == "REC-013") %>%
+  filter(!colony_id.x == "REC-017") %>%
+  filter(!colony_id.x == "REC-032")
 
 d$micromol.cm2.s <- d$micromol.cm2.s
 d$micromol.cm2.s <- replace(d$micromol.cm2.s, d$micromol.cm2.s<0,0)
