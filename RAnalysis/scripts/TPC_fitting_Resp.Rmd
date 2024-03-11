@@ -190,6 +190,7 @@ glimpse(d_params)
 ```
 
 
+
 <!-- ```{r} -->
 <!-- d_fits <- mutate(d_fits, bootstrap = list(rep(NA, n()))) -->
 

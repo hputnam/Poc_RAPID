@@ -304,6 +304,8 @@ length(unique(pr.out$colony_id.x))
 pr.out <- pr.out %>%
   separate(Light_Level.x, c("Temperature", "Light"))
 
+pr.out <- pr.out %>%
+filter(!abs(micromol.cm2.s) > 0.2)
 
 # Write to output file
 write.csv(pr.out, "output/pr_curve_extracted_rates.csv")
@@ -313,10 +315,6 @@ write.csv(pr.out, "output/pr_curve_extracted_rates.csv")
 
 pr.out$PAR <- as.numeric(pr.out$Light) 
 pr.out$Pc <- as.numeric(pr.out$micromol.cm2.s) 
-
-#pr.out <- pr.out %>%
-#filter(Temperature >20 & Light == 0)#%>%
-#filter(Temperature <39)
 
 pr.out %>% 
 ggplot(aes(x=avg_temp_interval, y=Pc, color=Species, group=colony_id.x))+ 

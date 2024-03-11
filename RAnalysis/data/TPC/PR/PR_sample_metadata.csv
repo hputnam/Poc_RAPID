@@ -35,3 +35,21 @@ Date,colony_id,Chamber.Channel,Position,Bin.ID,Run,Species,Temp.Cat,Chamber.Vol.
 20240309,POM-133,16,10,right,3,P. meandrina,ramp,351,NA
 20240309,POT-038,17,11,right,3,P. tuahiniensis,ramp,350,NA
 20240309,REC-020,18,12,right,3,Recruit,ramp,356,NA
+20240310,POM-195,1,4,left,4,P. meandrina,ramp,358,NA
+20240310,POG-150,2,5,left,4,P. grandis,ramp,359,NA
+20240310,POT-026,3,6,left,4,P. tuahiniensis,ramp,368,NA
+20240310,POV-005,4,7,left,4,P. verrucosa,ramp,373,NA
+20240310,REC-025,5,8,left,4,Recruit,ramp,360,NA
+20240310,BLK-007,6,9,left,4,Blank,ramp,386,NA
+20240310,REC-026,7,10,left,4,Recruit,ramp,370,NA
+20240310,REC-027,8,11,left,4,Recruit,ramp,358,NA
+20240310,REC-031,9,12,left,4,Recruit,ramp,373,NA
+20240310,REC-030,10,4,right,4,Recruit,ramp,388,NA
+20240310,POM-018,11,5,right,4,P. meandrina,ramp,368,NA
+20240310,POG-159,12,6,right,4,P. grandis,ramp,357,NA
+20240310,REC-028,13,7,right,4,Recruit,ramp,372,NA
+20240310,REC-029,14,8,right,4,Recruit,ramp,383,NA
+20240310,BLK-008,15,9,right,4,Blank,ramp,387,NA
+20240310,POT-024,16,10,right,4,P. tuahiniensis,ramp,354,NA
+20240310,POV-057,17,11,right,4,P. verrucosa,ramp,357,NA
+20240310,REC-032,18,12,right,4,Recruit,ramp,387,"problems with probe in first temp, switched out probe for new one"
