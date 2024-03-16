@@ -193,4 +193,14 @@ glimpse(d_params)
 
 ```
 
+```{r}
 
+TPC.pars <- as.data.frame(d_params)
+summary(aov(rmax ~ Species, TPC.pars))
+summary(aov(ctmax ~ Species, TPC.pars))
+summary(aov(e ~ Species, TPC.pars))
+summary(aov(eh ~ Species, TPC.pars))
+summary(aov(breadth ~ Species, TPC.pars))
+summary(aov(topt ~ Species, TPC.pars))
+
+```
