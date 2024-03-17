@@ -57,8 +57,8 @@ data <- data %>%
 
 data <- data %>%
   filter(Light==560) %>%
-  filter(Species == "Recruit") %>%
-  filter(Temperature < 39)
+  filter(Species == "Recruit") #%>%
+  #filter(Temperature < 39)
 
 data %>% 
 ggplot(aes(x=Temperature, y=micromol.cm2.s, color=Species, group=colony_id.x))+ 
@@ -76,7 +76,11 @@ d <- data %>%
   filter(!colony_id.x == "REC-011") %>%
   filter(!colony_id.x == "REC-013") %>%
   filter(!colony_id.x == "REC-017") %>%
-  filter(!colony_id.x == "REC-032")
+  filter(!colony_id.x == "REC-032") %>%
+  filter(!colony_id.x == "REC-012") %>%
+  filter(!colony_id.x == "REC-023") %>%
+  filter(!colony_id.x == "REC-035") %>%
+  filter(!colony_id.x == "REC-037")
 
 d$micromol.cm2.s <- d$micromol.cm2.s
 d$micromol.cm2.s <- replace(d$micromol.cm2.s, d$micromol.cm2.s<0,0)

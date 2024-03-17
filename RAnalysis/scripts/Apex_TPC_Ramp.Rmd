@@ -14,7 +14,7 @@ library(tidyverse)
 
 
 ```{r}
-bath <- read.csv("data/TPC/Adult/21723477_Bath_2024-03-02_17_35_03.csv")
+bath <- read.csv("data/TPC/Ramp_Test/21723477_Bath_2024-03-02_17_35_03.csv")
 colnames(bath) <- c("num", "Date.Time", "Temp.C")
 bath$name <- "bath"
 bath <- bath %>%
@@ -22,14 +22,14 @@ bath <- bath %>%
   filter(Date.Time < "03/02/2024 17:32:00")
 
 
-chamb1 <- read.csv("data/TPC/Adult/21723472_Chamber1_2024-03-02_17_35_38.csv")
+chamb1 <- read.csv("data/TPC/Ramp_Test/21723472_Chamber1_2024-03-02_17_35_38.csv")
 colnames(chamb1) <- c("num", "Date.Time", "Temp.C")
 chamb1$name <- "chamber1"
 chamb1 <- chamb1 %>%
   filter(Date.Time > "03/02/2024 13:32:00") %>%
   filter(Date.Time < "03/02/2024 17:32:00")
 
-chamb15 <- read.csv("data/TPC/Adult/21723473_Chamber15_2024-03-02_17_36_12.csv")
+chamb15 <- read.csv("data/TPC/Ramp_Test/21723473_Chamber15_2024-03-02_17_36_12.csv")
 colnames(chamb15) <- c("num", "Date.Time", "Temp.C")
 chamb15$name <- "chamber15"
 chamb15 <- chamb15 %>%
@@ -55,7 +55,7 @@ data %>%
 
 PIC
 ```{r}
-data <- read.csv("data/TPC/Run4_21723472_2024-03-10_20_37_48.csv")
+data <- read.csv("data/TPC/Run5_21723472 2024-03-14_13_19_56.csv")
 colnames(data) <- c("num", "Date.Time", "Temp.C")
 
 PIC <- data %>%
@@ -108,6 +108,20 @@ Run4 <- data %>%
 Run4$name <- "Run4"
 
 Run4 %>%
+  ggplot(aes(x = Date.Time, y = Temp.C, color=name)) +
+  geom_point(size = 1) +
+  #scale_x_continuous(breaks = seq(10))+
+  theme_classic()
+```
+
+Run5
+```{r}
+Run5 <- data %>%
+  filter(Date.Time > "03/13/2024 11:52:00") %>%
+  filter(Date.Time < "03/13/2024 19:00:00")
+Run5$name <- "Run5"
+
+Run5 %>%
   ggplot(aes(x = Date.Time, y = Temp.C, color=name)) +
   geom_point(size = 1) +
   #scale_x_continuous(breaks = seq(10))+
