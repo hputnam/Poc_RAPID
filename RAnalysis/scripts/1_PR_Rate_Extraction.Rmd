@@ -226,9 +226,6 @@ temperature_light_level_info$grouping.id <- paste0(temperature_light_level_info$
 # Join slopes with temperature_light_level_info
 pr <- left_join(temperature_light_level_info, pr, by = "grouping.id")
 
-  
-# Write raw data to output file
-#write.csv(pr, "output/pi_curve_extracted_rates_Raw.csv")
 ```
 
 
@@ -321,7 +318,7 @@ ggplot(aes(x=avg_temp_interval, y=Pc, color=Species, group=colony_id.x))+
   geom_point()+
   geom_line()+
   ylab("µmol O2 cm^2 s-1")+
-  facet_wrap(~ Species*Light,  ncol = 5)+
+  facet_wrap(~ Species*Light,  ncol = 5, scales = "free")+
   theme(legend.position = "none")
 
 pr.out %>% 
@@ -329,6 +326,6 @@ ggplot(aes(x=avg_temp_interval, y=Pc, color=Species, group=colony_id.x))+
   geom_point()+
   geom_line()+
   ylab("µmol O2 cm^2 s-1")+
-   facet_wrap(~ Light,  ncol = 5)
+   facet_wrap(~ Light,  ncol = 5, scales = "free")
 
 ```

@@ -65,31 +65,74 @@ ggplot(aes(x=Temperature, y=micromol.cm2.s, color=Species, group=colony_id.x))+
   facet_wrap(~ Species*Light,  ncol = 5)+
   theme(legend.position = "none")
 
-```
-
-#reshape the data for P (560) and R (0) in the same row for each sample for each temp and calculate P:R for each temp for each sample
-```{r}
-
+data$group <- paste0(data$colony_id.x, "-", data$Temperature.cat)
 
 ```
+
 
 ```{r}
 d <- data %>%
-  filter(Light==0) %>%
-  filter(!Species == "Recruit")
+  filter(!Species == "Recruit") %>%
+  filter(!group == "POT-024-28")%>%
+  filter(!group ==  "POG-150-32") %>%
+  filter(! curve_id == "26")
 
-d$micromol.cm2.s <- -d$micromol.cm2.s
-d$micromol.cm2.s <- replace(d$micromol.cm2.s, d$micromol.cm2.s<0,0)
-
-d <- d[,-c(1,4,6,7,9)]
+d <- d[,-c(1,4,7,9)]
 str(d)
 
-colnames(d) <- c("Species", "colony_id", "temp","rate","curve_id")
+colnames(d) <- c("Species", "colony_id", "temp","Light", "rate", "Temperature.cat", "curve_id", "group" )
 d$curve_id <- as.numeric(d$curve_id)
 str(d)
 
-```
+d %>% 
+ggplot(aes(x=temp, y=rate, color=Species, group=colony_id))+ 
+  geom_point()+
+  geom_line()+
+  ylab("µmol O2 cm^2 s-1")+
+  facet_wrap(~ Species*Light,  ncol = 5)+
+  theme(legend.position = "none")
 
+```
+```{r}
+Photo <- d  %>%
+  filter(Light == "560") 
+
+Resp <- d  %>%
+  filter(Light == "0") 
+
+d <- left_join(Photo, Resp, by="group")
+
+d$Pgross<- d$rate.x-d$rate.y
+
+d <- d %>%
+  subset(select = c("Species.x","colony_id.x", "curve_id.x", "temp.x","Temperature.cat.x", "rate.x", "rate.y", "Pgross"))
+
+colnames(d) <- c("Species","colony_id", "curve_id","temp","Temperature.cat", "rate.Pnet", "rate.Rd", "rate.Pgross")
+
+d$PR.ratio <- d$rate.Pgross/abs(d$rate.Rd) 
+
+d$rate <- d$rate.Pgross
+
+d$rate <- replace(d$rate, d$rate<0,0)
+
+d %>% 
+ggplot(aes(x=temp, y=rate, color=Species, group=colony_id))+ 
+  geom_point()+
+  geom_line()+
+  ylab("Pgross")+
+  facet_wrap(~ Species,  ncol = 5)+
+  theme(legend.position = "none")
+
+d %>% 
+ggplot(aes(x=temp, y=PR.ratio, color=Species, group=colony_id))+ 
+  geom_point()+
+  geom_line()+
+  ylab("P:R")+
+  facet_wrap(~ Species,  ncol = 5)+
+  theme(legend.position = "none")
+
+
+```
 
 TPC fitting 
 Padifeld et al **rTPC and nls.multstart: A new pipeline to fit thermal performance curves in r**  

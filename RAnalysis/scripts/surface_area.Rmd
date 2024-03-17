@@ -55,6 +55,7 @@ smpls %>%
 
 #check the range to make sure your samples fall within the range of the standards
 range(smpls$surface.area.cm2)
+boxplot(smpls$surface.area.cm2)
 hist(smpls$surface.area.cm2)
 range(stnds$surface.area.cm2)
 

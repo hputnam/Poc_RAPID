@@ -74,12 +74,24 @@ d <- data %>%
 d$micromol.cm2.s <- -d$micromol.cm2.s
 d$micromol.cm2.s <- replace(d$micromol.cm2.s, d$micromol.cm2.s<0,0)
 
+d$micromol.cm2.h <- -d$micromol.cm2.h
+d$micromol.cm2.h <- replace(d$micromol.cm2.h, d$micromol.cm2.h<0,0)
+
 d <- d[,-c(1,4,6,7,9)]
 str(d)
 
 colnames(d) <- c("Species", "colony_id", "temp","rate","curve_id")
 d$curve_id <- as.numeric(d$curve_id)
 str(d)
+
+d %>% 
+ggplot(aes(x=temp, y=rate, color=Species, group=colony_id))+ 
+  geom_point()+
+  geom_line()+
+  ylab("µmol O2 cm^2 s-1")+
+  facet_wrap(~ Species,  ncol = 4)+
+  theme(legend.position = "none")
+
 ```
 
 
@@ -709,7 +721,6 @@ estimate.plots <- ggplot(All_params, aes(Treatment, estimate, color=Treatment)) 
         strip.background = element_blank(), 
         strip.placement = "outside") +
   facet_wrap(~param, scales = 'free_y', nrow=2)+
-             #labeller = as_labeller(c(e = "e (Energy)", eh = " eh (Energy)", rmax= "Rmax (~nmol~O[2] ~larva^{-1}~min^{-1})",topt="Topt (Temperature °C)")), strip.position = "left") +
   scale_x_discrete('')
 
 estimate.plots
@@ -720,12 +731,14 @@ ggsave("output/TPC_estimates_SharpSchool_Respiration.pdf", estimate.plots, dpi=3
 #Plot Curve and Estimate Output
 ```{r}
 #generate a combined figure of TPCs and estimate plots
-figure <- ggarrange(TPC.plot , estimate.plots,
-                    labels = c("A", "B"),
+figure <- ggarrange(TPC.plot , estimate.plots, hjust = c(.01,.01),
+                    vjust = c(1.2,.01),
+                    labels = c("A) LEDR", "B) BootStrap TPC Estimates"),
                     ncol = 1, nrow = 2,
                     heights=c(1,0.5))
 figure
 
 ggsave("output/Respiration_TPC_and_estimates.pdf", figure, dpi=300, w=6, h=8, units="in")
+ggsave("output/Respiration_TPC_and_estimates.jpg", figure, dpi=300, w=6, h=8, units="in")
 
 ```

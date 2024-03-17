@@ -728,7 +728,6 @@ estimate.plots <- ggplot(All_params, aes(Treatment, estimate, color=Treatment)) 
         strip.background = element_blank(), 
         strip.placement = "outside") +
   facet_wrap(~param, scales = 'free_y', nrow=2)+
-             #labeller = as_labeller(c(e = "e (Energy)", eh = " eh (Energy)", rmax= "Rmax (~nmol~O[2] ~larva^{-1}~min^{-1})",topt="Topt (Temperature °C)")), strip.position = "left") +
   scale_x_discrete('')
 
 estimate.plots
@@ -740,11 +739,14 @@ ggsave("output/TPC_estimates_SharpSchool_Photosynthesis.pdf", estimate.plots, dp
 ```{r}
 #generate a combined figure of TPCs and estimate plots
 figure <- ggarrange(TPC.plot , estimate.plots,
-                    labels = c("A", "B"),
+                    hjust = c(.01,.01),
+                    vjust = c(1.2,.01),
+                    labels = c("A) Pnet", "B) BootStrap TPC Estimates"),
                     ncol = 1, nrow = 2,
                     heights=c(1,0.5))
 figure
 
 ggsave("output/Photosynthesis_TPC_and_estimates.pdf", figure, dpi=300, w=6, h=8, units="in")
+ggsave("output/Photosynthesis_TPC_and_estimates.jpg", figure, dpi=300, w=6, h=8, units="in")
 
 ```
