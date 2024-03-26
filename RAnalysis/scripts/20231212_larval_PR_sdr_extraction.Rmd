@@ -259,7 +259,15 @@ Photo.R <- Photo.R[-1,] #remove empty row
 
 write.csv(Photo.R, paste0("output/20231213_pr_sdr_rates_raw.csv")) #save respiration rate data
 
-plot(Photo.R$umol.L.min~as.factor(Photo.R$Plate)*as.factor(Photo.R$Light), side = 2, las = 2, xlab="" )
+Photo.R$group <- paste0(Photo.R$Plate, "_", Photo.R$Chamber.ID) 
+
+metadata <- metadata %>%
+  filter(Cohort == "20231212")  %>%
+  filter(!Plate == 9)
+
+metadata$group <- paste0(metadata$Plate, "_", metadata$Chamber.ID) 
+
+full.data <- left_join(Photo.R, metadata, by="group")
 
 ```
 

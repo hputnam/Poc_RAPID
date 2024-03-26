@@ -1,0 +1,318 @@
+---
+title: "Normalizing Rates"
+author: "HM Putnam"
+date: "2023-11-26"
+output: html_document
+---
+
+## Setup  
+
+Set up workspace, set options, and load required packages.    
+```{r}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r, warning=FALSE, message=FALSE}
+## install packages if you dont already have them in your library
+if ("devtools" %in% rownames(installed.packages()) == 'FALSE') install.packages('devtools') 
+library(devtools)
+if ("segmented" %in% rownames(installed.packages()) == 'FALSE') install.packages('segmented') 
+if ("plotrix" %in% rownames(installed.packages()) == 'FALSE') install.packages('plotrix') 
+if ("gridExtra" %in% rownames(installed.packages()) == 'FALSE') install.packages('gridExtra') 
+if ("LoLinR" %in% rownames(installed.packages()) == 'FALSE') install_github('colin-olito/LoLinR') 
+if ("lubridate" %in% rownames(installed.packages()) == 'FALSE') install.packages('lubridate') 
+if ("chron" %in% rownames(installed.packages()) == 'FALSE') install.packages('chron') 
+if ("plyr" %in% rownames(installed.packages()) == 'FALSE') install.packages('plyr') 
+if ("dplyr" %in% rownames(installed.packages()) == 'FALSE') install.packages('dplyr') 
+if ("stringr" %in% rownames(installed.packages()) == 'FALSE') install.packages('stringr') 
+if ("Rmisc" %in% rownames(installed.packages()) == 'FALSE') install.packages('Rmisc') 
+if ("respR" %in% rownames(installed.packages()) == 'FALSE') install.packages('respR') 
+if ("tidyverse" %in% rownames(installed.packages()) == 'FALSE') install.packages('tidyverse') 
+if ("emmeans" %in% rownames(installed.packages()) == 'FALSE') install.packages('emmeans') 
+if ("ggpubr" %in% rownames(installed.packages()) == 'FALSE') install.packages('ggpubr') 
+
+#load packages
+library("ggplot2")
+library("segmented")
+library("plotrix")
+library("gridExtra")
+library("LoLinR")
+library("lubridate")
+library("chron")
+library('plyr')
+library('dplyr')
+library('stringr')
+library('Rmisc')
+library('respR')
+library('tidyverse')
+library('emmeans')
+library('ggpubr')
+
+```
+
+Load Raw extracted Oxygen Flux Rates
+```{r, warning=FALSE, message=FALSE}
+Photo.Rates <- read.csv(file = "output/20231213_pr_sdr_rates_raw.csv") #read file back in so slopes don't have to be generated every time
+Photo.Rates = subset(Photo.Rates, select = -c(X) ) #remove empty column
+
+#format  column
+Photo.Rates<-Photo.Rates %>%
+  mutate(Plate = str_sub(Plate, 1, -1))
+Photo.Rates$Plate<-as.integer(Photo.Rates$Plate) #format as # rather than run #, set as integer
+```
+
+## Standardize and normalize  
+
+Merge rates files with sample info for normalization, plotting, and stats.  
+
+```{r, warning=FALSE, message=FALSE}
+Sample.Info <- read_csv(file = "data/larval/pr_sdr/PR_SDR_Sample_Info.csv")%>%
+  select(!Notes) %>%
+  filter(Cohort=="20231212") %>%
+  filter(Date=="20231213")
+
+#Sample.Info <- Sample.Info %>%
+#  filter(Date == 20231216)
+
+#make unique ID column
+Sample.Info$unique <- paste0(Sample.Info$Date, Sample.Info$Plate, Sample.Info$Chamber.ID)
+str(Sample.Info)
+
+Photo.Rates$unique <- paste0(Photo.Rates$Date, Photo.Rates$Plate, Photo.Rates$Chamber.ID)
+str(Photo.Rates)
+
+oxygen<-left_join(Photo.Rates, Sample.Info,  by="unique") #add photosynthesis data
+
+oxygen<- Photo.Rates %>%
+  left_join(Sample.Info, by="unique", suffix=c("",".y")) %>%
+  select(-ends_with(".y"))
+
+colnames(oxygen)[colnames(oxygen) == 'Intercept'] <- 'Photo.Intercept' #rename to specify R
+colnames(oxygen)[colnames(oxygen) == 'umol.L.min'] <- 'P.umol.L.min' #rename to specify R
+
+oxygen <- oxygen%>% 
+  filter(!Phenotype == "No Sensor")
+
+
+```
+
+Check for Outliers in the raw data
+```{r}
+oxygen %>% 
+  filter(Type=="Blank") %>%
+  ggplot(aes(Phenotype, P.umol.L.min))+
+  geom_point()+
+  geom_hline(yintercept=0, linetype="dashed", color = "black")+
+  facet_wrap(vars(Light))+
+  theme_bw()
+
+oxygen %>% 
+  filter(Type=="Sample") %>%
+  ggplot(aes(Phenotype, P.umol.L.min))+
+  geom_point()+
+  geom_hline(yintercept=0, linetype="dashed", color = "black")+
+  facet_wrap(vars(Light))+
+  theme_bw()
+
+oxygen %>% 
+  ggplot(aes(Type, P.umol.L.min))+
+  geom_point()+
+  geom_hline(yintercept=0, linetype="dashed", color = "black")+
+  facet_wrap(vars(Light, Phenotype), ncol=4)+
+  theme_bw()
+
+
+```
+
+Account for volume to obtain umol per minute.   
+```{r, results=TRUE, warning=FALSE, message=FALSE}
+#Account for chamber volume to convert from umol L-1 m-1 to umol m-1. This removes per Liter
+oxygen$P.umol.min <- oxygen$P.umol.L.min * oxygen$Volume #calculate
+
+```
+
+
+Analyze the data by Cohorts without the data for testing by number of larvae 
+```{r}
+
+blank_data <- subset(oxygen, Type == "Blank") #subset to blank data only
+
+blank_data %>% 
+  ggplot(aes(Cohort, P.umol.min))+
+  geom_point()+
+  geom_hline(yintercept=0, linetype="dashed", color = "black")+
+  facet_wrap(vars(Light))+
+  theme_bw()
+
+#remove positive respiration blanks 
+blank_data <-blank_data %>% 
+  filter(!unique =="202312137B2")
+
+blank_data %>% 
+  ggplot(aes(Light, P.umol.min))+
+  geom_point()+
+  geom_hline(yintercept=0, linetype="dashed", color = "black")+
+  theme_bw()
+
+#display mean blank values
+mean.blank.data <- blank_data %>% group_by(Plate, Light) %>%
+summarise(mean = mean(P.umol.min, na.rm=TRUE)) #mean P phase blanks
+
+mean.blank.data %>% 
+  ggplot(aes(Plate, mean))+
+  geom_point()+
+  geom_hline(yintercept=0, linetype="dashed", color = "black")+
+  facet_wrap(vars(Light))+
+  theme_bw()
+
+
+photo.blnk <- aggregate(P.umol.min ~ Date*Plate*Light, data=blank_data, mean) #calculate average blank during light for each run
+colnames(photo.blnk)[colnames(photo.blnk) == 'P.umol.min'] <- 'P.Blank.umol.min' #rename to specify blank for R
+
+oxygen <- full_join(oxygen, photo.blnk) #add R blanks to master
+```
+
+Subtract blank values to generate a "corrected" value for umol O2 min-1.  
+
+```{r, warning=FALSE, message=FALSE}
+oxygen$P.umol.min.corr<-oxygen$P.umol.min-oxygen$P.Blank.umol.min #subtract R blanks
+```
+
+Normalize to biologically relevant measure. Here, normalize to number of larvae. This can be substituted or changed for larval size/volume as well.  
+
+```{r, warning=FALSE, message=FALSE}
+oxygen.bio <- oxygen %>% filter(Org.Number == 60) #isolate only biological samples and 
+#respiration
+oxygen.bio$P.umol.org.min <- oxygen.bio$P.umol.min.corr/oxygen.bio$Org.Number #calculate oxygen per organism 
+oxygen.bio$P.nmol.org.min <- oxygen.bio$P.umol.org.min*1000 #calculate nanomoles 
+
+```
+
+Plot values.  
+```{r}
+options(scipen = 999)
+oxygen.bio %>% 
+  ggplot(aes(Temperature, P.umol.min.corr))+
+  geom_point()+
+  geom_hline(yintercept=0, linetype="dashed", color = "black")+
+  facet_wrap(vars(Light))+
+  theme_bw()
+
+```
+
+
+Comparison of development at 28 and 31 
+```{r, warning=FALSE, message=FALSE}
+oxygen.bio.devo <- oxygen.bio 
+
+devo.temp <- ggplot(oxygen.bio.devo, aes(x = Temperature, y = P.nmol.org.min)) +
+  stat_summary(aes(group = Phenotype), fun.y = mean, geom = "path",  position = position_dodge(width = 0.3)) +
+  stat_summary(aes(color = Phenotype), fun.data = mean_cl_boot, geom = "errorbar", width = 0.1,  position = position_dodge(width = 0.3)) +
+  stat_summary(aes(color = Phenotype), fun.y = mean, geom = "point", size = 4,  position = position_dodge(width = 0.3)) +
+  geom_point(aes(color = Phenotype), size = 2, position = position_dodge(width = 0.3)) +
+  facet_wrap(vars(Light), ncol=2) +
+  scale_color_manual(values = c("blue", "red"))+
+  theme_bw()
+devo.temp
+
+oxygen.bio.devo.light <- oxygen.bio.devo %>%
+  filter(Light == 1)
+
+oxygen.bio.devo.light$Pnet <- oxygen.bio.devo.light$P.nmol.org.min
+
+oxygen.bio.devo.dark <- oxygen.bio.devo %>%
+  filter(Light == 2)
+
+oxygen.bio.devo.dark$LEDR <- oxygen.bio.devo.dark$P.nmol.org.min
+
+oxygen.bio.devo.wide <- left_join(oxygen.bio.devo.light, oxygen.bio.devo.dark, by="unique")
+
+oxygen.bio.devo.wide$Pgross <- oxygen.bio.devo.wide$Pnet - oxygen.bio.devo.wide$LEDR
+
+oxygen.bio.devo.wide$PR.ratio <- oxygen.bio.devo.wide$Pnet/oxygen.bio.devo.wide$LEDR
+
+
+model.devo.Pnet <- lm(Pnet~ Temperature.x*Phenotype.x, data=oxygen.bio.devo.wide)
+summary(model.devo.Pnet)
+
+model.devo.Pgross <- lm(Pgross~ Temperature.x*Phenotype.x, data=oxygen.bio.devo.wide)
+summary(model.devo.Pgross)
+
+model.devo.dark <- lm(LEDR~ Temperature.x*Phenotype.x, data=oxygen.bio.devo.wide)
+summary(model.devo.dark)
+
+model.devo.dark <- lm(PR.ratio~ Temperature.x*Phenotype.x, data=oxygen.bio.devo.wide)
+summary(model.devo.dark)
+```
+
+```{r}
+
+Pnet <- ggplot(oxygen.bio.devo.wide, aes(x = Temperature.x, y = Pnet)) +
+  stat_summary(aes(group = Phenotype.x), fun.y = mean, geom = "path",  position = position_dodge(width = 0.3)) +
+  stat_summary(aes(color = Phenotype.x), fun.data = mean_cl_boot, geom = "errorbar", width = 0.1,  position = position_dodge(width = 0.3)) +
+  stat_summary(aes(color = Phenotype.x), fun.y = mean, geom = "point", size = 4,  position = position_dodge(width = 0.3)) +
+  geom_hline(yintercept=0,linetype=3)+
+  ylim(-0.003, 0.002)+
+  xlab("Temperature °C")+
+  ylab("Pnet nmol/larvae/min")+
+  geom_point(aes(color = Phenotype.x), size = 2, position = position_dodge(width = 0.3)) +
+  scale_color_manual(values = c("blue", "red"))+
+  theme_classic()+
+  theme(legend.position = "none")
+
+
+Pgross <- ggplot(oxygen.bio.devo.wide, aes(x = Temperature.x, y = Pgross)) +
+  stat_summary(aes(group = Phenotype.x), fun.y = mean, geom = "path",  position = position_dodge(width = 0.3)) +
+  stat_summary(aes(color = Phenotype.x), fun.data = mean_cl_boot, geom = "errorbar", width = 0.1,  position = position_dodge(width = 0.3)) +
+  stat_summary(aes(color = Phenotype.x), fun.y = mean, geom = "point", size = 4,  position = position_dodge(width = 0.3)) +
+  geom_point(aes(color = Phenotype.x), size = 2, position = position_dodge(width = 0.3)) +
+  geom_hline(yintercept=0,linetype=3)+
+  ylim(-0.003, 0.002)+
+  xlab("Temperature °C")+
+  ylab("Pgross nmol/larvae/min")+
+  scale_color_manual(values = c("blue", "red"))+
+  theme_classic()+
+  theme(legend.position = "none")
+
+
+LEDR <- ggplot(oxygen.bio.devo.wide, aes(x = Temperature.x, y = LEDR )) +
+  stat_summary(aes(group = Phenotype.x), fun.y = mean, geom = "path",  position = position_dodge(width = 0.3)) +
+  stat_summary(aes(color = Phenotype.x), fun.data = mean_cl_boot, geom = "errorbar", width = 0.1,  position = position_dodge(width = 0.3)) +
+  stat_summary(aes(color = Phenotype.x), fun.y = mean, geom = "point", size = 4,  position = position_dodge(width = 0.3)) +
+  geom_point(aes(color = Phenotype.x), size = 2, position = position_dodge(width = 0.3)) +
+  geom_hline(yintercept=0,linetype=3)+
+  ylim(-0.003, 0.002)+
+  xlab("Temperature °C")+
+  ylab("LEDR nmol/larvae/min")+
+  scale_color_manual(values = c("blue", "red"))+
+  theme_classic()+
+  theme(legend.position = "none")
+
+PR <- ggplot(oxygen.bio.devo.wide, aes(x = Temperature.x, y = PR.ratio )) +
+  stat_summary(aes(group = Phenotype.x), fun.y = mean, geom = "path",  position = position_dodge(width = 0.3)) +
+  stat_summary(aes(color = Phenotype.x), fun.data = mean_cl_boot, geom = "errorbar", width = 0.1,  position = position_dodge(width = 0.3)) +
+  stat_summary(aes(color = Phenotype.x), fun.y = mean, geom = "point", size = 4,  position = position_dodge(width = 0.3)) +
+  geom_point(aes(color = Phenotype.x), size = 2, position = position_dodge(width = 0.3)) +
+  geom_hline(yintercept=1,linetype=3)+
+  ylim(-0.1, 2.6)+
+  xlab("Temperature °C")+
+  ylab("P:R")+
+  scale_color_manual(values = c("blue", "red"))+
+  theme_classic()+
+  theme(legend.position = c(0.55,0.8))+
+  guides(color=guide_legend(title="Devo Temp"))
+
+
+
+plots <- grid.arrange(
+  Pnet,
+  Pgross,
+  LEDR,
+  PR,
+  nrow = 1,
+  top = "Pocillopora verrucosa metabolic rates following development at 28°C or 31°C")
+
+ggsave("output/20231212Cohort_DevoTemp_Pverrucosa_Metabolism.pdf", plots , width = 10, height = 4)
+ggsave("output/20231212Cohort_DevoTemp_Pverrucosa_Metabolism.jpg", plots , width = 10, height = 4)
+
+```
