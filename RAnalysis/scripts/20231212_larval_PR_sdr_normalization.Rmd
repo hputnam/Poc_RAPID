@@ -185,6 +185,7 @@ oxygen.bio <- oxygen %>% filter(Org.Number == 60) #isolate only biological sampl
 #respiration
 oxygen.bio$P.umol.org.min <- oxygen.bio$P.umol.min.corr/oxygen.bio$Org.Number #calculate oxygen per organism 
 oxygen.bio$P.nmol.org.min <- oxygen.bio$P.umol.org.min*1000 #calculate nanomoles 
+#oxygen.bio$P.nmol.org.hr <- oxygen.bio$P.umol.org.min*60 #calculate nanomoles per hour
 
 ```
 
