@@ -1,0 +1,26 @@
+---
+title: "TagSeqAnalysis"
+author: "HM Putnam"
+date: "2024-04-25"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#load libraries
+library("tidyverse")
+library("genefilter")
+library("DESeq2")
+
+```
+
+#load data
+```{r}
+counts.106 <- read.csv( "data/Tagseq_zymo_genohub/counts/6.bam.gene_abund.tab", header=T, sep="\t")
+counts.106$length <- counts.106$End-counts.106$Start
+#prepDE.py derives hypothetical read counts for each transcript from the coverage values estimated by StringTie for each transcript, by using this simple formula: 
+#reads_per_transcript = coverage * transcript_len / read_len
+#https://ccb.jhu.edu/software/stringtie/index.shtml?t=manual
+counts.106$reads_per_transcript <- counts.106$Coverage *(counts.106$length)
+
+```

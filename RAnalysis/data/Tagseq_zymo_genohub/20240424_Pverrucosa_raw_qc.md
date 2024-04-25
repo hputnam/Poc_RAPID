@@ -268,17 +268,21 @@ sbatch /data/putnamlab/hputnam/Pverr_Larvae_Devo/scripts/mapping.sh
 |111|79.42%|1197613 (20.58%|4043448 (69.50%)|576924 (9.92%)|5817985|
 |112|79.67%|1199480 (20.33%)|4144181 (70.22%)|557717 (9.45%)|5901378|
 |113|75.33%|1371601 (24.67%)|3746268 (67.38%)|442097 (7.95%)|5559966|
-|6|
-|7|
-|8|
-|9|
+|6|80.93%|1111841 (19.07%)|4151500 (71.20%)|567392 (9.73%)|5830733|
+|7|81.77%|1156119 (18.23%)|4467037 (70.43%)|719533 (11.34%)|6342689|
+|8|84.11%|985584 (15.89%)|4498417 (72.55%)|716802 (11.56%)|6200803|
+|9|84.80%|779842 (15.20%)|3799632 (74.05%)| 552017 (10.76%)|5131491|
+
+
+
+# WORK IN PROGRESS
 
 
 # Assembly with Stringtie 2
 
 
 ```
-sbatch /data/putnamlab/hputnam/Pverr_Larvae_Devo/scripts/assemble_transcripts.sh
+nano /data/putnamlab/hputnam/Pverr_Larvae_Devo/scripts/assemble_transcripts.sh
 ```
 
 
@@ -296,18 +300,20 @@ module load StringTie/2.1.4-GCC-9.3.0
 
 array=($(ls *.bam)) #Make an array of bam files to assemble
  
-for i in ${array[@]}; do #Running with the -e option to compare output to exclude novel genes. Also output a file with the gene abundances
-	stringtie -p 8 -e -B -G /data/putnamlab/hputnam/Pverr_Larvae_Devo/refs/Pverr_Genome/Pver_genome_assembly_v1.0.gff3 -A ${i}.gene_abund.tab -o ${i}.gtf ${i}
-        echo "StringTie assembly for seq file ${i}" $(date)
+for i in ${array[@]}; do 
+	stringtie -p 8 --rf -e -G /data/putnamlab/hputnam/Pverr_Larvae_Devo/refs/Pverr_Genome/Pver_genome_assembly_v1.0.gff3 -o ${i}.gtf ${i}
 done
-echo "StringTie assembly COMPLETE" $(date)
 
+
+```
+
+```
+sbatch /data/putnamlab/hputnam/Pverr_Larvae_Devo/scripts/assemble_transcripts.sh
 ```
 
 
 # Generate gene counts matrix
 [prepDE.py](https://raw.githubusercontent.com/gpertea/stringtie/master/prepDE.py)
-
 
 
 ```
@@ -325,38 +331,42 @@ nano /data/putnamlab/hputnam/Pverr_Larvae_Devo/scripts/prepDE_matrix.sh
 #SBATCH -D /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped
 
 #load modules
-module load Python/2.7.15-foss-2018b #Python
+module load Python/2.7.15-foss-2018b 
 module load StringTie/2.1.4-GCC-9.3.0
 module load GffCompare/0.12.1-GCCcore-8.3.0
 
-#make gtf_list.txt file
-ls AH*.gtf > gtf_list.txt
-
-stringtie --merge -p 8 -G Montipora_capitata_HIv3.genes_fixed.gff3 -o Mcapitata_merged.gtf gtf_list.txt #Merge GTFs to form $
-echo "Stringtie merge complete" $(date)
-
-gffcompare -r Montipora_capitata_HIv3.genes_fixed.gff3 -G -o merged Mcapitata_merged.gtf #Compute the accuracy and pre$
-echo "GFFcompare complete, Starting gene count matrix assembly..." $(date)
 
 #make gtf list text file
-for filename in AH*.gtf; do echo $filename $PWD/$filename; done > listGTF.txt
+ls *.bam.gtf > gtf_list.txt
 
-python /data/putnamlab/hputnam/Pverr_Larvae_Devo/scripts/prepDE.py -g Pverr_larvae_gene_count_matrix.csv -i listGTF.txt #Compile the gene count matrix
-echo "Gene count matrix compiled." $(date)
+stringtie --merge -p 8 -G /data/putnamlab/hputnam/Pverr_Larvae_Devo/refs/Pverr_Genome/Pver_genome_assembly_v1.0.gff3 -o ST_merged.gtf gtf_list.txt
 
+gffcompare -r /data/putnamlab/hputnam/Pverr_Larvae_Devo/refs/Pverr_Genome/Pver_genome_assembly_v1.0.gff3 -G -o merged ST_merged.gtf 
+
+array=($(ls *.bam))
+
+for i in ${array[@]}; do 
+	stringtie -p 8 --rf -e -G ST_merged.gtf -o ${i}.gtf ${i}
+done
+
+
+for filename in *bam.gtf; do echo $filename $PWD/$filename; done > listGTF.txt
+
+python /data/putnamlab/hputnam/Pverr_Larvae_Devo/scripts/prepDE.py -g Pverr_larvae_gene_count_matrix.csv -i listGTF.txt
 
 ```
 
 
+```
+sbatch /data/putnamlab/hputnam/Pverr_Larvae_Devo/scripts/prepDE_matrix.sh
+```
 
+# The workflow is failing at the prepDE.py level with the following error
 
-
-
-
-
-
-
-
+```
+Problem parsing file /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped/106.bam.gtf at line:
+:['Pver_Sc0000112_size552208', '.', 'transcript', '1269', '1387', '.', '+', '.', 'transcript_id "Pver_g6505.t1', '5_prime_partial true"; cov "0.0"; FPKM "0.000000"; TPM "0.000000";\n']
+```
 
 
 
