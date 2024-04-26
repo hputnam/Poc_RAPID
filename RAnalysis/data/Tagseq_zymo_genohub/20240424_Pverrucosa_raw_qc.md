@@ -81,8 +81,12 @@ fb4d03ba2a9016fabb284d10e513f873  Pver_genome_assembly_v1.0.fasta.gz
 
 # Trimming reads
 
-The intial QC showed that the read information is inverted from what is described in the Zymo library prep kit for the Zymo-Seq SwitchFree 3' mRNA library prep (Cat R3008).  So here we are analyzing Read 1 which contains the data and not Read 2 which contains the UMI and mostly adapter. 
+The intial QC showed that Read1 had high unique reads and Read2 had high amount of duplicated reads. This is from the library prep process where the polyA priming generates reads that are characterized as having redundancy by FastQC, whereas the UMIs on Read1 result in FastQC characterizing them as unique. 
 
+The Zymo library prep kit for the Zymo-Seq SwitchFree 3' mRNA library prep (Cat R3008) recommends to only anlyze Read 2. I was worried about the amount of duplicated reads in Read2, so first I only analyzed Read1 which contains the P5 adapter, UMI + 6V, Oligo dT and then the insert. This requires both adapter trimming and trimming X number of bases in from the front of Read 1 to get to the Insert.
+
+
+# Read 1 Analysis
 
 ```
 nano /data/putnamlab/hputnam/Pverr_Larvae_Devo/scripts/trimQC_R1.sh
@@ -161,9 +165,9 @@ array1=($(ls *R1_001.fastq.gz))
 
 # fastp loop; trim the Read 1 TruSeq adapter sequence; trim poly x default 10 (to trim polyA) 
 for i in ${array1[@]}; do
-	fastp --in1 ${i} --out1 /data/putnamlab/hputnam/Pverr_Larvae_Devo/clean/clean30_${i} --adapter_sequence=AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT --trim_front1 30 
+	fastp --in1 ${i} --out1 /data/putnamlab/hputnam/Pverr_Larvae_Devo/clean/mapped2/${i} --adapter_sequence=AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT --trim_front1 30 
 # fastqc the cleaned reads
-        fastqc /data/putnamlab/hputnam/Pverr_Larvae_Devo/clean/clean30_${i} --outdir /data/putnamlab/hputnam/Pverr_Larvae_Devo/clean/
+        fastqc /data/putnamlab/hputnam/Pverr_Larvae_Devo/clean/mapped2/${i} --outdir /data/putnamlab/hputnam/Pverr_Larvae_Devo/clean/
 done 
 
 multiqc /data/putnamlab/hputnam/Pverr_Larvae_Devo/clean/clean30*
@@ -175,7 +179,7 @@ sbatch /data/putnamlab/hputnam/Pverr_Larvae_Devo/scripts/trimQC_R1_front30.sh
 ```
 
 
-# Test alignment 
+# Test alignment Read 1
 
 ```
 nano /data/putnamlab/hputnam/Pverr_Larvae_Devo/scripts/mapping.sh
@@ -256,7 +260,7 @@ rm /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped/*.sam
 sbatch /data/putnamlab/hputnam/Pverr_Larvae_Devo/scripts/mapping.sh
 ```
 
-## Alignment results
+## Alignment results R1
 
 |Sample.ID | overall alignment rate| aligned 0 times | aligned exactly 1 time | aligned >1 times | reads|
 |---|---|---|---|---|---|
@@ -361,7 +365,7 @@ python /data/putnamlab/hputnam/Pverr_Larvae_Devo/scripts/prepDE.py -g Pverr_larv
 sbatch /data/putnamlab/hputnam/Pverr_Larvae_Devo/scripts/prepDE_matrix.sh
 ```
 
-# The workflow is failing at the prepDE.py level with the following error
+# The gene counts workflow is failing at the prepDE.py level with the following error
 
 ```
 Problem parsing file /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped/106.bam.gtf at line:
@@ -369,10 +373,142 @@ Problem parsing file /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped/106.bam.gt
 ```
 
 
+# Read 2 Data Analysis
+
+
+```
+nano /data/putnamlab/hputnam/Pverr_Larvae_Devo/scripts/trimQC_R2.sh
+```
+
+```
+#!/bin/bash
+#SBATCH -t 8:00:00
+#SBATCH --nodes=1 --ntasks-per-node=1
+#SBATCH --export=NONE
+#SBATCH --mem=250GB
+#SBATCH --account=putnamlab
+#SBATCH -D /data/putnamlab/hputnam/Pverr_Larvae_Devo/raw
+
+#load modules
+module load fastp/0.19.7-foss-2018b
+module load all/FastQC/0.11.9-Java-11
+module load MultiQC/1.9-intel-2020a-Python-3.8.2
+
+# Make an array of sequences to trim
+array1=($(ls *R2_001.fastq.gz)) 
+
+# fastp loop; trim the Read 2 TruSeq adapter sequence; trim poly x default 10 (to trim polyA) 
+for i in ${array1[@]}; do
+	fastp --in1 ${i} --out1 /data/putnamlab/hputnam/Pverr_Larvae_Devo/clean2/clean_${i} --adapter_sequence=AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT --trim_poly_x 6 -q 30 -y -Y 50 
+# fastqc the cleaned reads
+        fastqc /data/putnamlab/hputnam/Pverr_Larvae_Devo/clean2/clean_${i} --outdir /data/putnamlab/hputnam/Pverr_Larvae_Devo/clean2/
+done 
+
+multiqc /data/putnamlab/hputnam/Pverr_Larvae_Devo/clean2/
+
+```
+
+```
+sbatch /data/putnamlab/hputnam/Pverr_Larvae_Devo/scripts/trimQC_R2.sh
+```
+
+
+scp hputnam@ssh3.hac.uri.edu://data/putnamlab/hputnam/Pverr_Larvae_Devo/clean2/multiqc_report.html /Users/hputnam/MyProjects/Poc_RAPID/RAnalysis/data/Tagseq_zymo_genohub/
 
 
 
 
+# Test Mapping Read 2
+
+```
+nano /data/putnamlab/hputnam/Pverr_Larvae_Devo/scripts/R2_mapping.sh
+```
+
+```
+#!/bin/bash
+#SBATCH -t 8:00:00
+#SBATCH --nodes=1 --ntasks-per-node=1
+#SBATCH --export=NONE
+#SBATCH --mem=400GB
+#SBATCH --account=putnamlab
+#SBATCH -D /data/putnamlab/hputnam/Pverr_Larvae_Devo/
+
+#load modules
+module load HISAT2/2.2.1-foss-2019b
+module load SAMtools/1.9-foss-2018b
+
+#hisat2-build -f /data/putnamlab/hputnam/Pverr_Larvae_Devo/refs/Pverr_Genome/Pver_genome_assembly_v1.0.fasta ./Pverr_Genome 
+
+	#hisat2 --rna-strandness F -p 8 --dta -x Pverr_Genome -U /data/putnamlab/hputnam/Pverr_Larvae_Devo/clean2/clean_106_S51_R2_001.fastq.gz -S /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/106.sam
+        #samtools sort -@ 8 -o /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/106.bam /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/106.sam
+
+hisat2 --rna-strandness F -p 8 --dta -x Pverr_Genome -U /data/putnamlab/hputnam/Pverr_Larvae_Devo/clean2/clean_107_S52_R2_001.fastq.gz -S /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/107.sam
+        samtools sort -@ 8 -o /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/107.bam /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/107.sam
 
 
+	hisat2 --rna-strandness F -p 8 --dta -x Pverr_Genome -U /data/putnamlab/hputnam/Pverr_Larvae_Devo/clean2/clean_108_S53_R2_001.fastq.gz -S /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/108.sam
+        samtools sort -@ 8 -o /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/108.bam /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/108.sam
+
+
+	hisat2 --rna-strandness F -p 8 --dta -x Pverr_Genome -U /data/putnamlab/hputnam/Pverr_Larvae_Devo/clean2/clean_109_S54_R2_001.fastq.gz -S /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/109.sam
+        samtools sort -@ 8 -o /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/109.bam /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/109.sam
+
+
+	hisat2 --rna-strandness F -p 8 --dta -x Pverr_Genome -U /data/putnamlab/hputnam/Pverr_Larvae_Devo/clean2/clean_110_S55_R2_001.fastq.gz -S /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/110.sam
+        samtools sort -@ 8 -o /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/110.bam /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/110.sam
+
+
+	hisat2 --rna-strandness F -p 8 --dta -x Pverr_Genome -U /data/putnamlab/hputnam/Pverr_Larvae_Devo/clean2/clean_111_S56_R2_001.fastq.gz -S /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/111.sam
+        samtools sort -@ 8 -o /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/111.bam /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/111.sam
+
+
+	hisat2 --rna-strandness F -p 8 --dta -x Pverr_Genome -U /data/putnamlab/hputnam/Pverr_Larvae_Devo/clean2/clean_112_S57_R2_001.fastq.gz -S /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/112.sam
+        samtools sort -@ 8 -o /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/112.bam /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/112.sam
+
+
+	hisat2 --rna-strandness F -p 8 --dta -x Pverr_Genome -U /data/putnamlab/hputnam/Pverr_Larvae_Devo/clean2/clean_113_S58_R2_001.fastq.gz -S /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/113.sam
+        samtools sort -@ 8 -o /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/113.bam /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/113.sam
+
+
+	hisat2 --rna-strandness F -p 8 --dta -x Pverr_Genome -U /data/putnamlab/hputnam/Pverr_Larvae_Devo/clean2/clean_6_S47_R2_001.fastq.gz -S /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/6.sam
+        samtools sort -@ 8 -o /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/6.bam /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/6.sam
+
+
+	hisat2 --rna-strandness F -p 8 --dta -x Pverr_Genome -U /data/putnamlab/hputnam/Pverr_Larvae_Devo/clean2/clean_7_S48_R2_001.fastq.gz -S /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/7.sam
+        samtools sort -@ 8 -o /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/7.bam /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/7.sam
+
+
+	hisat2 --rna-strandness F -p 8 --dta -x Pverr_Genome -U /data/putnamlab/hputnam/Pverr_Larvae_Devo/clean2/clean_8_S49_R2_001.fastq.gz -S /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/8.sam
+        samtools sort -@ 8 -o /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/8.bam /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/8.sam
+
+
+	hisat2 --rna-strandness F -p 8 --dta -x Pverr_Genome -U /data/putnamlab/hputnam/Pverr_Larvae_Devo/clean2/clean_9_S50_R2_001.fastq.gz -S /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/9.sam
+        samtools sort -@ 8 -o /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/9.bam /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/9.sam
+
+
+  
+rm /data/putnamlab/hputnam/Pverr_Larvae_Devo/mapped2/*.sam
+
+```
+
+```
+sbatch /data/putnamlab/hputnam/Pverr_Larvae_Devo/scripts/R2_mapping.sh
+```
+
+## Alignment results Read2
+
+|Sample.ID | overall alignment rate| aligned 0 times | aligned exactly 1 time | aligned >1 times | reads|
+|---|---|---|---|---|---|
+|106|68.97%|2617559 (31.03%)|5255055 (62.30%)|562400 (6.67%)|8435014 |
+|107|58.23%|3818475 (41.77%)|4566278 (49.95%)|756429 (8.27%)|9141182|
+|108|39.12%|4575629 (60.88%)|2443027 (32.51%)|496571 (6.61%)|7515227|
+|109|67.74%|3190933 (32.26%)|5902975 (59.68%)|797413 (8.06%)|9891321|
+|110|51.71%|4423586 (48.29%)|3758092 (41.03%)|978454 (10.68%)|9160132|
+|111|69.42%|2660851 (30.58%)|5362514 (61.64%)|676534 (7.78%)|8699899|
+|112|69.42%|2679906 (30.58%)|5476030 (62.49%)|607125 (6.93%)|8763061|
+|113|64.29%|3033008 (35.71%)|4893828 (57.62%)|565831 (6.66%)|8492667|
+|6|54.29%|4173872 (45.71%)|4521417 (49.51%)|436760 (4.78%)|9132049|
+|7|54.73%|4307010 (45.27%)|4615189 (48.51%)|591322 (6.22%)|9513521|
+|8|72.38%|2567051 (27.62%)|5914595 (63.65%)|811121 (8.73%)|9292767|
+|9|75.36%|1902138 (24.64%)|5111941 (66.21%)| 707090 (9.16%)|7721169|
 
