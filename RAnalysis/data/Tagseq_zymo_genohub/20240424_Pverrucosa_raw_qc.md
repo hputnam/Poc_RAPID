@@ -1,3 +1,5 @@
+# Read count extraction from Zymo-Seq SwitchFree 3' mRNA library prep (Cat R3008) and NovaSeq X Plus 2 x 150bp seqeuncing
+
 ```
 nano /data/putnamlab/KITT/hputnam/20240424_Pverrucosa_larvae/fastqc_raw.sh
 ```
