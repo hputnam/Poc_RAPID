@@ -1,0 +1,473 @@
+---
+title: "GeneExpression"
+author: "HM Putnam"
+date: "4/24/2024"
+output: html_document
+---
+
+Install and Load Packages
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#library("tidyr")
+library("tidyverse")
+library("DESeq2")
+library("genefilter")
+library("RColorBrewer")
+library("pheatmap")
+library("viridis")
+library("ggplot2")
+library("goseq")
+library("strex")
+library("ggpubr")
+library("ggplotify")
+```
+
+#Read in data and metadata
+```{r}
+#read in metadata
+sample_ColData <- read.csv("data/Tagseq_zymo_genohub/Pverr_larvae_Seq_Sample_Info.csv", header=TRUE, sep=",")
+print(sample_ColData)
+sample_ColData$group <- paste0(sample_ColData$Stage,"_",sample_ColData$Temperature)
+
+#Read in data
+TranscriptCountData <- as.data.frame(read.csv(file= "data/Tagseq_zymo_genohub/Pverr_larvae_gene_count_matrix.csv", sep=",", header = TRUE))
+head(TranscriptCountData)
+
+rownames(TranscriptCountData) <- TranscriptCountData[,1]
+TranscriptCountData <- TranscriptCountData[,-1]
+head(TranscriptCountData)
+```
+
+#Functional Annotation
+
+```{r}
+# Functional Annotation
+Annot <- read.csv("Data/Ahya_V1_annotation/ahya_swissprot_protein.txt", header=F, sep="\t", na.string="NA", skip=0, stringsAsFactors = F) #read in data file
+colnames(Annot) <- c("gene", "sseqid", "pident", "length", "mismatch", "gapopen",
+                     "qstart", "qend", "sstart", "send", "evalue", "bitscore") #rename columns
+
+Annot$gene <- gsub("-RA", "", Annot$gene)
+
+Annot <- Annot[,c(1:2)]
+Annot <- Annot %>% distinct(gene,.keep_all = TRUE)
+Annot$sseqid <- str_after_nth(Annot$sseqid, "\\|", 2)
+
+# identify the full list of genes
+genes <- as.data.frame(row.names(Ahya_TranscriptCountData))
+colnames(genes) <- c("gene")
+
+#join gene names with annotation
+genes.annot <- left_join(genes, Annot, by="gene")
+genes.annot$sseqid <- genes.annot$sseqid %>% replace_na('Unknown')
+
+#write out Uniprot IDs for conversion of Uniprot IDs to GO terms
+write.csv(genes.annot, "Data/Ahya_V1_annotation/all.go.terms.csv")
+
+#translate Uniprot IDs to GO terms with Batch https://www.uniprot.org/id-mapping
+
+#read in GO term data for all annotated genes
+Ahya.GOs <- read.csv("Data/Ahya_V1_annotation/Ahya_genome_GOmapping_All.tsv", header=T, sep="\t", na.string="NA", skip=0, stringsAsFactors = F) #read in data file
+
+#join the gene names with their hits and GO ids
+Ahya.GOs <- right_join(Ahya.GOs, genes.annot, by="sseqid")
+
+```
+
+#filtering values for PoverA
+```{r}
+
+#filter to ambient temperature embryos and larvae
+TranscriptCountData <- TranscriptCountData[,c(1:4,5,7,9,11)]
+sample_ColData <- sample_ColData[c(1:4,5,7,9,11),]
+
+#set filter values for PoverA, P percent of the samples have counts over A
+filt <- filterfun(pOverA(0.4,10))
+
+#create filter for the counts data
+tfil <- genefilter(TranscriptCountData, filt)
+
+#identify transcripts to keep by count filter
+keep <- TranscriptCountData[tfil,]
+
+#identify transcript list
+gn.keep <- rownames(keep)
+
+#data filtered in PoverA, P percent of the samples have counts over A
+filt.count.mat <- as.matrix(TranscriptCountData[which(rownames(TranscriptCountData) %in% gn.keep),])
+head(filt.count.mat)
+```
+
+#check count matrix sample name order (column order) and sample metadata order matches
+```{r}
+#assign tube ids as rownames in metadata
+rownames(sample_ColData) <- sample_ColData$Tube_ID
+
+rownames(sample_ColData)
+colnames(filt.count.mat) 
+
+# Check all sample IDs in sample_ColData are also in TranscriptCountData and match their orders
+all(rownames(sample_ColData) %in% colnames(filt.count.mat))  #Should return TRUE
+# returns TRUE
+all(rownames(sample_ColData) == colnames(filt.count.mat))    # should return TRUE
+#returns TRUE
+
+#identify the treatment column levels
+sample_ColData$group <- factor(sample_ColData$group)
+levels(sample_ColData$group)
+
+```
+
+
+```{r}
+#### Construct DESeq dataset from matrix
+data <- DESeqDataSetFromMatrix(countData = filt.count.mat, colData = sample_ColData, design = ~ group) #create a DESeqDataSet object
+
+
+#apply a regularized log transformation to minimize effects of small counts and normalize wrt library size
+rld <- rlog(data, blind=FALSE)
+head(assay(rld), 3) #view data
+
+#calculate distance matix
+sampleDists <- dist(t(assay(rld)))
+
+#distance matrix
+sampleDistMatrix <- as.matrix(sampleDists)
+
+#assign col names
+colnames(sampleDistMatrix) <- sample_ColData$group
+
+#assign colors
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+
+
+#### Plotting heatmap for Expression Visualization of all genes in each sample
+
+#pdf(file="Output/gene_expression_heatmap_all.pdf")
+pheatmap(sampleDistMatrix, #plot matrix of expression similarity
+         clustering_distance_rows=sampleDists, #cluster rows
+         clustering_distance_cols=sampleDists, #cluster columns
+         col=colors) #set colors
+#dev.off()
+
+#### Plotting PCA from Expression visualization
+
+#pdf(file="Output/PCA_all.pdf")
+plotPCA(rld, intgroup = c("group")) #plot PCA of samples with all data
+#dev.off()
+
+
+```
+
+
+
+# Differential Gene Expression Analysis
+```{r}
+#DESeq2 Test: test of the factor 
+
+#run differential expression test by group using the wald test
+DEG.int <- DESeq(data)
+
+#save DE results
+DEG.int.res <- results(DEG.int)
+
+# Volcano Plot (significance as a function of fold change)
+par(mar=c(5,5,5,5), cex=1.0, cex.main=1.4, cex.axis=1.4, cex.lab=1.4)
+topT <- as.data.frame(DEG.int.res)
+#Adjusted P values (FDR Q values)
+with(topT, plot(log2FoldChange, padj, pch=20, main="Volcano plot", cex=1.0, xlab=bquote(~Log[2]~fold~change), ylab=bquote(padj)))
+abline(h=0.05, col="black", lty=3, lwd=1.0)
+#Color the significant points with log2 fold change >2 red ()
+with(subset(topT, padj<0.05), points(log2FoldChange, padj, pch=20, col="red", cex=0.5))
+
+
+#view DE results
+resultsNames(DEG.int)
+
+# save log fold change information
+log2_changes <- DEG.int.res[,c(2,6)]
+
+#identify the number of significant p values with 5%FDR (padj<0.05)
+sig.num <- sum(DEG.int.res$padj <0.05, na.rm=T)
+
+#identify signficant pvalues with 5%FDR
+sig <- subset(DEG.int.res, padj<0.05,)
+
+#subset list of sig transcripts from original count data
+sig.list <- data[which(rownames(data) %in% rownames(sig)),]
+
+#save DEG list
+write.csv(counts(sig.list), file="Output/Stage_DEG_05FDR.all.csv")
+
+#save DEG df
+res_df <- as.data.frame(DEG.int.res)
+
+#subset upregulated in embryos
+up.emb.sig <- res_df %>% 
+  subset(padj<0.05) %>%
+  subset(log2FoldChange<0) #negative values are higher in the Forereef
+
+#Sanity check on expression direction. Backreef should be on average higher than Forereef
+plotCounts(DEG.int, gene=rownames(up.emb.sig)[1], intgroup="group") 
+
+#subset list of sig transcripts from original count data
+up.emb.sig.list <- data[which(rownames(data) %in% rownames(up.emb.sig)),]
+
+
+#subset upregulated in larvae
+up.lar.sig <- res_df %>% 
+  subset(padj<0.05) %>%
+  subset(log2FoldChange>0) #negative values are higher in the Forereef
+
+#Sanity check on expression direction. Backreef should be on average higher than Forereef
+plotCounts(DEG.int, gene=rownames(up.lar.sig)[1], intgroup="group") 
+
+#subset list of sig transcripts from original count data
+up.lar.sig.list <- data[which(rownames(data) %in% rownames(up.lar.sig)),]
+
+
+```
+
+#Plotting Differentially Expressed Genes (DEGs)
+```{r}
+#### Plotting DEG PCA
+
+# set site colors
+cols <- c("Embryo_28" = "orange","Larvae_28" = "cyan")
+
+rsig <- rlog(sig.list, blind=FALSE)
+
+PCA.plot.auto <- plotPCA(rsig, intgroup = c("group")) #Plot PCA of all samples for DEG only
+PCA.plot.auto #view plot
+
+PC.info <-PCA.plot.auto$data #extract plotting data
+
+dev.off()
+#plot PCA results
+pdf(file="figures/Pverr_larvae_embryo_PCA.DEG.pdf")
+PCA.plot <- PC.info %>%
+ggplot(aes(x=PC1, y=PC2,color=group), group=group)+
+  geom_point(size=3)+
+  scale_color_manual(values=cols)+
+  #ylim(-15,15)+
+  #xlim(-35,35)+
+  xlab(paste0(PCA.plot.auto$labels$x[1]))+
+  ylab(paste0(PCA.plot.auto$labels$y[1]))+
+  theme_bw()+
+  theme(legend.position = c(0.8, 0.8),
+         text = element_text(size=15))
+PCA.plot 
+dev.off()
+
+```
+
+```{r}
+#### Plotting DEG heatmap
+
+ann_colors = list(
+  group = c("Embryo_28" = "orange","Larvae_28" = "cyan"))
+
+#make an expression object
+mat <- assay(rsig)#
+
+#make dataframe
+df <- data.frame(colData(rsig)[c("group")])
+
+#pdf(file="Output/DEG_Heatmap.pdf")
+pheatmap(mat, color=inferno(10), annotation_col = df, clustering_method = "average", scale="row",
+                clustering_distance_rows="euclidean", show_rownames =F, cluster_cols=T,
+                show_colnames =F, gaps_col = c(5)) #plot heatmap of all DEG by group
+#dev.off()
+
+#plot heatmap by site
+pdf("output/Pverr_larvae_DEG_heaptmap_relative.pdf")
+Hmap <- pheatmap(mat, color=inferno(10), annotation_col = df, annotation_colors = ann_colors, clustering_method = "average", scale="row",  clustering_distance_rows="euclidean", show_rownames =F, fontsize_row=8, cluster_cols=T, show_colnames =F, gaps_col = c(5)) #plot heatmap of all DEG by group
+Hmap 
+dev.off()
+
+```
+#Plotting PCA and Heatmap together
+```{r}
+DEplots <- ggarrange(PCA.plot, as.grob(Hmap), ncol=2, labels = c("A)","B)"))
+ggsave("figures/Pverr_larvae_DEplots_Stage.pdf", DEplots, width = 16, height=8)
+ggsave("figures/Pverr_larvae_DEplots_Stage.png", DEplots, width = 16, height=8)
+
+
+```
+
+
+#Adding Annotation to DEGs
+```{r}
+DEGs <- as.data.frame(counts(sig.list))
+DEGs$gene <- rownames(DEGs)
+DEGs$gene <- gsub("\\|.*", "", DEGs$gene)
+Output <- left_join(DEGs,Annot,  by="gene")
+write.csv(Output[,12],"Output/Annotated_DEGS.csv")
+Output <- Output$sseqid %>% replace_na('Unknown')
+```
+
+# Gene Length
+```{r}
+calc.lengths <- read.table("Data/Genome/Ahyacinthus.genes.gff", header=F)
+calc.lengths$length <- calc.lengths$V5 - calc.lengths$V4
+calc.lengths$V9 <- str_after_nth(calc.lengths$V9, "\\;", 1)
+calc.lengths$V9 <- gsub("Name=", "", calc.lengths$V9)
+calc.lengths <- calc.lengths[,c(9:10)]
+colnames(calc.lengths)[1] <- "gene"
+```
+
+#GO enrichment of DEGs that are HIGHER IN EXPRESSION in the Backreef
+```{r}
+
+ALL<-row.names(data) #set the all transcripts list
+DEG <- as.character(row.names(up.BR.sig.list)) #set the enrichment test list
+IDs <- row.names(data) #set ID names
+LENGTH <-calc.lengths
+
+#load GO terms for all genes in the genome
+GO.terms <-Ahya.GOs
+splitted <- strsplit(as.character(GO.terms$Gene.Ontology.IDs), ";") #slit into multiple GO ids
+GO.terms <- data.frame(v1 = rep.int(GO.terms$gene, sapply(splitted, length)), v2 = unlist(splitted)) #list all GOs with each assigned transcript
+
+
+#change contig lists to vectors
+ALL.vector <-c(t(ALL))
+DEG.vector <-c(t(DEG))
+ID.vector <- LENGTH$gene
+LENGTH.vector <-LENGTH$length
+
+gene.vector <-  as.integer(ID.vector%in%DEG.vector) #Construct new vector with 1 for DEG and 0 for others
+names(gene.vector)=ID.vector #set names
+DEG.pwf<-nullp(gene.vector, ID.vector, bias.data=LENGTH.vector) #weight vector by length of gene
+
+#Find enriched GO terms, "selection-unbiased testing for category enrichment amongst differentially expressed (DE) genes for RNA-seq data"
+GO.wall<-goseq(DEG.pwf, ID.vector, gene2cat=GO.terms, test.cats=c("GO:CC", "GO:BP", "GO:MF"), method="Wallenius", use_genes_without_cat=TRUE)
+
+#How many enriched GO terms do we have
+class(GO.wall)
+head(GO.wall)
+tail(GO.wall)
+nrow(GO.wall)
+
+#Find only enriched GO terms that are statistically significant at cutoff 
+enriched.GO.05.a<-GO.wall$category[GO.wall$over_represented_pvalue<.05]
+enriched.GO.05<-data.frame(enriched.GO.05.a)
+colnames(enriched.GO.05) <- c("category")
+enriched.GO.05 <- merge(enriched.GO.05, GO.wall, by="category")
+
+
+MF.INT <- subset(enriched.GO.05, ontology=="MF")
+BR.MF.INT <- MF.INT[order(MF.INT$numDEInCat),]
+CC.INT <- subset(enriched.GO.05, ontology=="CC")
+BR.CC.INT <- CC.INT[order(CC.INT$numDEInCat),]
+BP.INT <- subset(enriched.GO.05, ontology=="BP")
+BR.BP.INT <- BP.INT[order(BP.INT$numDEInCat),]
+write.csv(ALL , file = "Output/Transcriptome_GOTerms.csv")
+write.csv(MF.INT , file = "Output/BR.MF_Sig_Enriched_GO.05_INT.csv")
+write.csv(CC.INT , file = "Output/BR.CC_Sig_Enriched_GO.05_INT.csv")
+write.csv(BP.INT , file = "Output/BR.BP_Sig_Enriched_GO.05_INT.csv")
+
+```
+
+#GO enrichment of DEGs that are HIGHER IN EXPRESSION in the Forereef
+```{r}
+
+ALL<-row.names(data) #set the all transcripts list
+DEG <- as.character(row.names(up.FR.sig.list)) #set the enrichment test list
+IDs <- row.names(data) #set ID names
+LENGTH <-calc.lengths
+
+#load GO terms for all genes in the genome
+GO.terms <-Ahya.GOs
+splitted <- strsplit(as.character(GO.terms$Gene.Ontology.IDs), ";") #slit into multiple GO ids
+GO.terms <- data.frame(v1 = rep.int(GO.terms$gene, sapply(splitted, length)), v2 = unlist(splitted)) #list all GOs with each assigned transcript
+
+
+#change contig lists to vectors
+ALL.vector <-c(t(ALL))
+DEG.vector <-c(t(DEG))
+ID.vector <- LENGTH$gene
+LENGTH.vector <-LENGTH$length
+
+gene.vector <-  as.integer(ID.vector%in%DEG.vector) #Construct new vector with 1 for DEG and 0 for others
+names(gene.vector)=ID.vector #set names
+DEG.pwf<-nullp(gene.vector, ID.vector, bias.data=LENGTH.vector) #weight vector by length of gene
+
+#Find enriched GO terms, "selection-unbiased testing for category enrichment amongst differentially expressed (DE) genes for RNA-seq data"
+GO.wall<-goseq(DEG.pwf, ID.vector, gene2cat=GO.terms, test.cats=c("GO:CC", "GO:BP", "GO:MF"), method="Wallenius", use_genes_without_cat=TRUE)
+
+#How many enriched GO terms do we have
+class(GO.wall)
+head(GO.wall)
+tail(GO.wall)
+nrow(GO.wall)
+
+#Find only enriched GO terms that are statistically significant at cutoff 
+enriched.GO.05.a<-GO.wall$category[GO.wall$over_represented_pvalue<.05]
+enriched.GO.05<-data.frame(enriched.GO.05.a)
+colnames(enriched.GO.05) <- c("category")
+enriched.GO.05 <- merge(enriched.GO.05, GO.wall, by="category")
+
+
+MF.INT <- subset(enriched.GO.05, ontology=="MF")
+FR.MF.INT <- MF.INT[order(MF.INT$numDEInCat),]
+CC.INT <- subset(enriched.GO.05, ontology=="CC")
+FR.CC.INT <- CC.INT[order(CC.INT$numDEInCat),]
+BP.INT <- subset(enriched.GO.05, ontology=="BP")
+FR.BP.INT <- BP.INT[order(BP.INT$numDEInCat),]
+write.csv(ALL , file = "Output/Transcriptome_GOTerms.csv")
+write.csv(MF.INT , file = "Output/FR.MF_Sig_Enriched_GO.05_INT.csv")
+write.csv(CC.INT , file = "Output/FR.CC_Sig_Enriched_GO.05_INT.csv")
+write.csv(BP.INT , file = "Output/FR.BP_Sig_Enriched_GO.05_INT.csv")
+
+
+```
+
+
+#Plotting Both sites enrichement of upregulated expression together
+```{r}
+BR.BP.INT$Site <- "Backreef"
+FR.BP.INT$Site <- "Forereef"
+BP.GO.plotting <- rbind(BR.BP.INT, FR.BP.INT)
+
+BP.GO.DEG <- BP.GO.plotting %>% 
+    #top_n(nrow(BP.GO.plotting)) %>% 
+    mutate(hitsPerc=numDEInCat*100/numInCat) %>% 
+    ggplot(aes(x=hitsPerc, 
+               y=term, 
+               colour=over_represented_pvalue, 
+               size=numDEInCat)) +
+        geom_point() +
+  scale_colour_gradient(low = "red", high = "yellow")+
+        expand_limits(x=0) +
+        labs(x="% Differentially Expressed in GO Category", y="Biological Process GO term", colour="p value", size="Count")+
+  theme_bw()+
+  facet_grid("Site", scales="free_y", labeller = as_labeller(c(Backreef = "BACKREEF HIGHER EXPRESSION", Forereef = "FOREREEF HIGHER EXPRESSION")))
+
+
+BR.MF.INT$Site <- "Backreef"
+FR.MF.INT$Site <- "Forereef"
+MF.GO.plotting <- rbind(BR.MF.INT, FR.MF.INT)
+
+MF.GO.DEG <- MF.GO.plotting %>% 
+    #top_n(nrow(MF.GO.plotting)) %>% 
+    mutate(hitsPerc=numDEInCat*100/numInCat) %>% 
+    ggplot(aes(x=hitsPerc, 
+               y=term, 
+               colour=over_represented_pvalue, 
+               size=numDEInCat)) +
+        geom_point() +
+  scale_colour_gradient(low = "red", high = "yellow")+
+        expand_limits(x=0) +
+        labs(x="% Differentially Expressed in GO Category", y="Molecular Functions GO term", colour="p value", size="Count")+
+  theme_bw()+
+  facet_grid("Site", scales="free_y", labeller = as_labeller(c(Backreef = "BACKREEF HIGHER EXPRESSION", Forereef = "FOREREEF HIGHER EXPRESSION")))
+
+
+ggsave("Figures/BPGOplots.pdf", BP.GO.DEG, width = 10, height=10)
+ggsave("Figures/BPGOplots.png", BP.GO.DEG, width = 10, height=10)
+
+ggsave("Figures/MFGOplots.pdf", MF.GO.DEG, width = 10, height=10)
+ggsave("Figures/MFGOplots.png", MF.GO.DEG, width = 10, height=10)
+
+```

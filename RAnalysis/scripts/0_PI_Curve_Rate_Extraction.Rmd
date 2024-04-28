@@ -52,7 +52,7 @@ metadata <- full_join(sample.info, run.info) %>%
 
 # Select only certain columns
 metadata <- metadata %>%
-  select(Species, colony_id, Run, Temp.Cat, Chamber.Vol.L, Date, Start.time, Stop.time, Light_Value, Light_Level)
+  select(Species, Stage, colony_id, Run, Temp.Cat, Chamber.Vol.L, Date, Start.time, Stop.time, Light_Value, Light_Level)
 ```
 
 
@@ -195,7 +195,7 @@ nrow(xx)
 nrow(distinct(xx))
 
 #select only the essential columns
-mx <- select(metadata, Species, colony_id, Run, Chamber.Vol.L, Temp.Cat)
+mx <- select(metadata, Species, Stage, colony_id, Run, Chamber.Vol.L, Temp.Cat)
 nrow(mx)
 nrow(distinct(df))
 
@@ -275,11 +275,11 @@ length(unique(pr$colony_id))
 ```{r}
 # Select variables to write to file
 pr.out <- pr %>% 
-  select(Species, colony_id, Light_Value.x, Temp.Cat.x, Run, micromol.cm2.s, micromol.cm2.h)
+  select(Species, Stage, colony_id, Light_Value.x, Temp.Cat.x, Run, micromol.cm2.s, micromol.cm2.h)
 length(unique(pr.out$colony_id))
 
 # Write to output file
-write.csv(pr.out, "output/pi_curve_extracted_rates.csv")
+write.csv(pr.out, "output/TPC_pi_curve_extracted_rates.csv")
 ```
 #plot  data
 ```{r}
@@ -287,17 +287,10 @@ pr.out$PAR <- as.numeric(pr.out$Light_Value.x)
 pr.out$Pc <- as.numeric(pr.out$micromol.cm2.s) 
 
 pr.out %>% 
-ggplot(aes(x=PAR, y=Pc, color=Species, group=colony_id))+ 
+ggplot(aes(x=PAR, y=Pc, color=Stage, group=colony_id))+ 
   geom_point()+
   geom_line()+
-  #facet_wrap(~ Species*Temp.Cat.x,  ncol = 10)+
-  theme(legend.position = "none")
-
-pr.out %>% 
-ggplot(aes(x=PAR, y=Pc, color=Species, group=colony_id))+ 
-  geom_point()+
-  geom_line()+
-  facet_wrap(~ Species*Temp.Cat.x,  ncol = 10)+
+  facet_wrap(~ Species,  ncol = 6)+
   theme(legend.position = "none")
 
 ```

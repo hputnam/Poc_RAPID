@@ -56,13 +56,16 @@ data <- data %>%
   mutate(curve_id = group_indices())
 
 
-data %>% 
+data %>% filter(stage=="Recruit") %>%
 ggplot(aes(x=Temperature, y=micromol.cm2.s, color=Species, group=colony_id.x))+ 
   geom_point()+
   geom_line()+
+  geom_hline(yintercept = 0)+
+  ylim(-0.00025,0.00025)+
   ylab("µmol O2 cm^2 s-1")+
-  facet_wrap(~ Species*Light,  ncol = 5)+
-  theme(legend.position = "none")
+  facet_wrap(~ Species*Light,  ncol = 2)+
+  theme(legend.position = "none")+
+  theme_bw()
 
 data$group <- paste0(data$colony_id.x, "-", data$Temperature)
 
