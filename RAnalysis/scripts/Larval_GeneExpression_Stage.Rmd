@@ -21,6 +21,8 @@ library("goseq")
 library("strex")
 library("ggpubr")
 library("ggplotify")
+library("EnhancedVolcano")
+
 ```
 
 #Read in data and metadata
@@ -43,46 +45,19 @@ head(TranscriptCountData)
 
 ```{r}
 # Functional Annotation
-Annot <- read.csv("Data/Ahya_V1_annotation/ahya_swissprot_protein.txt", header=F, sep="\t", na.string="NA", skip=0, stringsAsFactors = F) #read in data file
-colnames(Annot) <- c("gene", "sseqid", "pident", "length", "mismatch", "gapopen",
-                     "qstart", "qend", "sstart", "send", "evalue", "bitscore") #rename columns
-
-Annot$gene <- gsub("-RA", "", Annot$gene)
-
-Annot <- Annot[,c(1:2)]
-Annot <- Annot %>% distinct(gene,.keep_all = TRUE)
-Annot$sseqid <- str_after_nth(Annot$sseqid, "\\|", 2)
-
-# identify the full list of genes
-genes <- as.data.frame(row.names(Ahya_TranscriptCountData))
-colnames(genes) <- c("gene")
-
-#join gene names with annotation
-genes.annot <- left_join(genes, Annot, by="gene")
-genes.annot$sseqid <- genes.annot$sseqid %>% replace_na('Unknown')
-
-#write out Uniprot IDs for conversion of Uniprot IDs to GO terms
-write.csv(genes.annot, "Data/Ahya_V1_annotation/all.go.terms.csv")
-
-#translate Uniprot IDs to GO terms with Batch https://www.uniprot.org/id-mapping
-
-#read in GO term data for all annotated genes
-Ahya.GOs <- read.csv("Data/Ahya_V1_annotation/Ahya_genome_GOmapping_All.tsv", header=T, sep="\t", na.string="NA", skip=0, stringsAsFactors = F) #read in data file
-
-#join the gene names with their hits and GO ids
-Ahya.GOs <- right_join(Ahya.GOs, genes.annot, by="sseqid")
+Annot <- readxl::read_xlsx("data/Tagseq_zymo_genohub/FileS2_Pver_gene_annot_May28.xlsx", skip=4) #read in data file
 
 ```
 
 #filtering values for PoverA
 ```{r}
 
-#filter to ambient temperature embryos and larvae
-TranscriptCountData <- TranscriptCountData[,c(1:4,5,7,9,11)]
-sample_ColData <- sample_ColData[c(1:4,5,7,9,11),]
+#filter to 28°C samples 
+TranscriptCountData <- TranscriptCountData[,c(1:5,7,9,11)]
+sample_ColData <- sample_ColData[c(1:5,7,9,11),]
 
 #set filter values for PoverA, P percent of the samples have counts over A
-filt <- filterfun(pOverA(0.4,10))
+filt <- filterfun(pOverA(0.5,10))
 
 #create filter for the counts data
 tfil <- genefilter(TranscriptCountData, filt)
@@ -181,6 +156,11 @@ abline(h=0.05, col="black", lty=3, lwd=1.0)
 with(subset(topT, padj<0.05), points(log2FoldChange, padj, pch=20, col="red", cex=0.5))
 
 
+  EnhancedVolcano(DEG.int.res,
+    lab = rownames(DEG.int.res),
+    x = 'log2FoldChange',
+    y = 'pvalue')
+
 #view DE results
 resultsNames(DEG.int)
 
@@ -197,33 +177,50 @@ sig <- subset(DEG.int.res, padj<0.05,)
 sig.list <- data[which(rownames(data) %in% rownames(sig)),]
 
 #save DEG list
-write.csv(counts(sig.list), file="Output/Stage_DEG_05FDR.all.csv")
+write.csv(counts(sig.list), file="Output/DEG_05FDR_Stage.csv")
 
 #save DEG df
 res_df <- as.data.frame(DEG.int.res)
+res_df <- res_df %>% 
+  subset(padj<0.05)
+```
 
-#subset upregulated in embryos
-up.emb.sig <- res_df %>% 
+Comparing Embryos and Larvae
+```{r}
+
+#subset upregulated in embryos°C
+up.EMB.sig <- res_df %>% 
   subset(padj<0.05) %>%
   subset(log2FoldChange<0) #negative values are higher in the Forereef
 
 #Sanity check on expression direction. Backreef should be on average higher than Forereef
-plotCounts(DEG.int, gene=rownames(up.emb.sig)[1], intgroup="group") 
+plotCounts(DEG.int, gene=rownames(up.EMB.sig)[1], intgroup="group") 
 
 #subset list of sig transcripts from original count data
-up.emb.sig.list <- data[which(rownames(data) %in% rownames(up.emb.sig)),]
+up.EMB.sig.list <- data[which(rownames(data) %in% rownames(up.EMB.sig)),]
+up.EMB.sig.list <- as.data.frame(counts(up.EMB.sig.list))
+
+#add annotation data
+up.EMB.sig.list$Gene <- rownames(up.EMB.sig.list)
+up.EMB.sig.list.annot <- left_join(up.EMB.sig.list, Annot,  by="Gene")
+
 
 
 #subset upregulated in larvae
-up.lar.sig <- res_df %>% 
+up.LAR.sig <- res_df %>% 
   subset(padj<0.05) %>%
   subset(log2FoldChange>0) #negative values are higher in the Forereef
 
 #Sanity check on expression direction. Backreef should be on average higher than Forereef
-plotCounts(DEG.int, gene=rownames(up.lar.sig)[1], intgroup="group") 
+plotCounts(DEG.int, gene=rownames(up.LAR.sig)[1], intgroup="group") 
 
 #subset list of sig transcripts from original count data
-up.lar.sig.list <- data[which(rownames(data) %in% rownames(up.lar.sig)),]
+up.LAR.sig.list <- data[which(rownames(data) %in% rownames(up.LAR.sig)),]
+up.LAR.sig.list <- as.data.frame(counts(up.LAR.sig.list))
+
+#add annotation data
+up.LAR.sig.list$Gene <- rownames(up.LAR.sig.list)
+up.LAR.sig.list.annot <- left_join(up.LAR.sig.list, Annot,  by="Gene")
 
 
 ```
@@ -232,7 +229,7 @@ up.lar.sig.list <- data[which(rownames(data) %in% rownames(up.lar.sig)),]
 ```{r}
 #### Plotting DEG PCA
 
-# set site colors
+# set  colors
 cols <- c("Embryo_28" = "orange","Larvae_28" = "cyan")
 
 rsig <- rlog(sig.list, blind=FALSE)
@@ -242,9 +239,9 @@ PCA.plot.auto #view plot
 
 PC.info <-PCA.plot.auto$data #extract plotting data
 
-dev.off()
+
 #plot PCA results
-pdf(file="figures/Pverr_larvae_embryo_PCA.DEG.pdf")
+pdf(file="figures/Pverr_larvae_stage_PCA.DEG.pdf")
 PCA.plot <- PC.info %>%
 ggplot(aes(x=PC1, y=PC2,color=group), group=group)+
   geom_point(size=3)+
@@ -254,7 +251,7 @@ ggplot(aes(x=PC1, y=PC2,color=group), group=group)+
   xlab(paste0(PCA.plot.auto$labels$x[1]))+
   ylab(paste0(PCA.plot.auto$labels$y[1]))+
   theme_bw()+
-  theme(legend.position = c(0.8, 0.8),
+  theme(legend.position = c(0.8, 0.2),
          text = element_text(size=15))
 PCA.plot 
 dev.off()
@@ -280,7 +277,7 @@ pheatmap(mat, color=inferno(10), annotation_col = df, clustering_method = "avera
 #dev.off()
 
 #plot heatmap by site
-pdf("output/Pverr_larvae_DEG_heaptmap_relative.pdf")
+pdf("output/Pverr_Stage_DEG_heaptmap_relative.pdf")
 Hmap <- pheatmap(mat, color=inferno(10), annotation_col = df, annotation_colors = ann_colors, clustering_method = "average", scale="row",  clustering_distance_rows="euclidean", show_rownames =F, fontsize_row=8, cluster_cols=T, show_colnames =F, gaps_col = c(5)) #plot heatmap of all DEG by group
 Hmap 
 dev.off()
@@ -289,8 +286,8 @@ dev.off()
 #Plotting PCA and Heatmap together
 ```{r}
 DEplots <- ggarrange(PCA.plot, as.grob(Hmap), ncol=2, labels = c("A)","B)"))
-ggsave("figures/Pverr_larvae_DEplots_Stage.pdf", DEplots, width = 16, height=8)
-ggsave("figures/Pverr_larvae_DEplots_Stage.png", DEplots, width = 16, height=8)
+ggsave("figures/Pverr_DEplots_Stage.pdf", DEplots, width = 16, height=8)
+ggsave("figures/Pverr_DEplots_Stage.png", DEplots, width = 16, height=8)
 
 
 ```
@@ -298,42 +295,65 @@ ggsave("figures/Pverr_larvae_DEplots_Stage.png", DEplots, width = 16, height=8)
 
 #Adding Annotation to DEGs
 ```{r}
-DEGs <- as.data.frame(counts(sig.list))
-DEGs$gene <- rownames(DEGs)
-DEGs$gene <- gsub("\\|.*", "", DEGs$gene)
-Output <- left_join(DEGs,Annot,  by="gene")
-write.csv(Output[,12],"Output/Annotated_DEGS.csv")
-Output <- Output$sseqid %>% replace_na('Unknown')
+DEGs <- res_df
+DEGs$Gene <- rownames(DEGs)
+Output <- left_join(DEGs,Annot,  by="Gene")
+write.csv(Output,"output/Annotated_Stage_DEGS.csv")
+
+#Output <- Output %>% separate(Hit_description, into = c("Hit_description1", "Hit_description2"),sep = "\\(|\\)")
+
 ```
 
+up and down plot
+```{r}
+
+Output$label <- paste0(Output$Hit_description1, " (", Output$Gene, ")")
+Output$label <- gsub("Pver_gene_", "", Output$label)
+
+Output$label <- factor(Output$label, levels = Output$label[order(Output$log2FoldChange)])
+
+
+Output %>% arrange(log2FoldChange) %>%
+  ggplot(aes(x=label, y=log2FoldChange, colour=padj)) +
+  ylim(-8,10)+
+          geom_point(size=2)+
+          scale_colour_gradientn(colours = colorspace::heat_hcl(7))+
+  geom_segment(aes(x=label, xend=label, y=0, yend=log2FoldChange)) +
+   geom_vline(xintercept = 12 + 0.5, linetype = "dashed") + # Add vertical line
+  coord_flip()+
+  theme_classic()
+```
+
+# GO ENRICHMENT
 # Gene Length
 ```{r}
-calc.lengths <- read.table("Data/Genome/Ahyacinthus.genes.gff", header=F)
+calc.lengths <- read.table("data/Tagseq_zymo_genohub/Pver_genome_assembly_v1.0_fixed.gff3", header=F)
+calc.lengths <- calc.lengths %>% filter(V3=="mRNA")
 calc.lengths$length <- calc.lengths$V5 - calc.lengths$V4
 calc.lengths$V9 <- str_after_nth(calc.lengths$V9, "\\;", 1)
-calc.lengths$V9 <- gsub("Name=", "", calc.lengths$V9)
+calc.lengths$V9 <- gsub("geneID=", "", calc.lengths$V9)
 calc.lengths <- calc.lengths[,c(9:10)]
-colnames(calc.lengths)[1] <- "gene"
+colnames(calc.lengths)[1] <- "Gene"
 ```
 
-#GO enrichment of DEGs that are HIGHER IN EXPRESSION in the Backreef
+#GO enrichment of DEGs that are HIGHER IN EXPRESSION in embryos
 ```{r}
 
 ALL<-row.names(data) #set the all transcripts list
-DEG <- as.character(row.names(up.BR.sig.list)) #set the enrichment test list
+DEG <- as.character(row.names(up.EMB.sig.list)) #set the enrichment test list
 IDs <- row.names(data) #set ID names
 LENGTH <-calc.lengths
 
 #load GO terms for all genes in the genome
-GO.terms <-Ahya.GOs
-splitted <- strsplit(as.character(GO.terms$Gene.Ontology.IDs), ";") #slit into multiple GO ids
-GO.terms <- data.frame(v1 = rep.int(GO.terms$gene, sapply(splitted, length)), v2 = unlist(splitted)) #list all GOs with each assigned transcript
-
+GO.terms <-Annot[,c(2,13)]
+splitted <- strsplit(as.character(GO.terms$Gene_ontology_IDs), ";") #split into multiple GO ids
+GO.terms <- data.frame(v1 = rep.int(GO.terms$Gene, sapply(splitted, length)), v2 = unlist(splitted)) #list all GOs with each assigned transcript
+GO.terms$v2 <- gsub(" GO:", "GO:",GO.terms$v2)
 
 #change contig lists to vectors
 ALL.vector <-c(t(ALL))
 DEG.vector <-c(t(DEG))
-ID.vector <- LENGTH$gene
+ID.vector <- LENGTH$Gene
 LENGTH.vector <-LENGTH$length
 
 gene.vector <-  as.integer(ID.vector%in%DEG.vector) #Construct new vector with 1 for DEG and 0 for others
@@ -357,36 +377,36 @@ enriched.GO.05 <- merge(enriched.GO.05, GO.wall, by="category")
 
 
 MF.INT <- subset(enriched.GO.05, ontology=="MF")
-BR.MF.INT <- MF.INT[order(MF.INT$numDEInCat),]
+EMB.MF.INT <- MF.INT[order(MF.INT$numDEInCat),]
 CC.INT <- subset(enriched.GO.05, ontology=="CC")
-BR.CC.INT <- CC.INT[order(CC.INT$numDEInCat),]
+EMB.CC.INT <- CC.INT[order(CC.INT$numDEInCat),]
 BP.INT <- subset(enriched.GO.05, ontology=="BP")
-BR.BP.INT <- BP.INT[order(BP.INT$numDEInCat),]
-write.csv(ALL , file = "Output/Transcriptome_GOTerms.csv")
-write.csv(MF.INT , file = "Output/BR.MF_Sig_Enriched_GO.05_INT.csv")
-write.csv(CC.INT , file = "Output/BR.CC_Sig_Enriched_GO.05_INT.csv")
-write.csv(BP.INT , file = "Output/BR.BP_Sig_Enriched_GO.05_INT.csv")
+EMB.BP.INT <- BP.INT[order(BP.INT$numDEInCat),]
+#write.csv(ALL , file = "Output/Transcriptome_GOTerms.csv")
+#write.csv(MF.INT , file = "Output/BR.MF_Sig_Enriched_GO.05_INT.csv")
+#write.csv(CC.INT , file = "Output/BR.CC_Sig_Enriched_GO.05_INT.csv")
+#write.csv(BP.INT , file = "Output/BR.BP_Sig_Enriched_GO.05_INT.csv")
 
 ```
 
-#GO enrichment of DEGs that are HIGHER IN EXPRESSION in the Forereef
+#GO enrichment of DEGs that are HIGHER IN EXPRESSION in Larvae
 ```{r}
 
 ALL<-row.names(data) #set the all transcripts list
-DEG <- as.character(row.names(up.FR.sig.list)) #set the enrichment test list
+DEG <- as.character(row.names(up.LAR.sig.list)) #set the enrichment test list
 IDs <- row.names(data) #set ID names
 LENGTH <-calc.lengths
 
 #load GO terms for all genes in the genome
-GO.terms <-Ahya.GOs
-splitted <- strsplit(as.character(GO.terms$Gene.Ontology.IDs), ";") #slit into multiple GO ids
-GO.terms <- data.frame(v1 = rep.int(GO.terms$gene, sapply(splitted, length)), v2 = unlist(splitted)) #list all GOs with each assigned transcript
-
+GO.terms <-Annot[,c(2,13)]
+splitted <- strsplit(as.character(GO.terms$Gene_ontology_IDs), ";") #split into multiple GO ids
+GO.terms <- data.frame(v1 = rep.int(GO.terms$Gene, sapply(splitted, length)), v2 = unlist(splitted)) #list all GOs with each assigned transcript
+GO.terms$v2 <- gsub(" GO:", "GO:",GO.terms$v2)
 
 #change contig lists to vectors
 ALL.vector <-c(t(ALL))
 DEG.vector <-c(t(DEG))
-ID.vector <- LENGTH$gene
+ID.vector <- LENGTH$Gene
 LENGTH.vector <-LENGTH$length
 
 gene.vector <-  as.integer(ID.vector%in%DEG.vector) #Construct new vector with 1 for DEG and 0 for others
@@ -410,64 +430,25 @@ enriched.GO.05 <- merge(enriched.GO.05, GO.wall, by="category")
 
 
 MF.INT <- subset(enriched.GO.05, ontology=="MF")
-FR.MF.INT <- MF.INT[order(MF.INT$numDEInCat),]
+LAR.MF.INT <- MF.INT[order(MF.INT$numDEInCat),]
 CC.INT <- subset(enriched.GO.05, ontology=="CC")
-FR.CC.INT <- CC.INT[order(CC.INT$numDEInCat),]
+LAR.CC.INT <- CC.INT[order(CC.INT$numDEInCat),]
 BP.INT <- subset(enriched.GO.05, ontology=="BP")
-FR.BP.INT <- BP.INT[order(BP.INT$numDEInCat),]
-write.csv(ALL , file = "Output/Transcriptome_GOTerms.csv")
-write.csv(MF.INT , file = "Output/FR.MF_Sig_Enriched_GO.05_INT.csv")
-write.csv(CC.INT , file = "Output/FR.CC_Sig_Enriched_GO.05_INT.csv")
-write.csv(BP.INT , file = "Output/FR.BP_Sig_Enriched_GO.05_INT.csv")
-
+LAR.BP.INT <- BP.INT[order(BP.INT$numDEInCat),]
+#write.csv(ALL , file = "Output/Transcriptome_GOTerms.csv")
+#write.csv(MF.INT , file = "Output/BR.MF_Sig_Enriched_GO.05_INT.csv")
+#write.csv(CC.INT , file = "Output/BR.CC_Sig_Enriched_GO.05_INT.csv")
+#write.csv(BP.INT , file = "Output/BR.BP_Sig_Enriched_GO.05_INT.csv")
 
 ```
-
-
-#Plotting Both sites enrichement of upregulated expression together
+# GO Plotting
+https://biostatsquid.com/pathway-enrichment-analysis-plots/#step5
 ```{r}
-BR.BP.INT$Site <- "Backreef"
-FR.BP.INT$Site <- "Forereef"
-BP.GO.plotting <- rbind(BR.BP.INT, FR.BP.INT)
 
-BP.GO.DEG <- BP.GO.plotting %>% 
-    #top_n(nrow(BP.GO.plotting)) %>% 
-    mutate(hitsPerc=numDEInCat*100/numInCat) %>% 
-    ggplot(aes(x=hitsPerc, 
-               y=term, 
-               colour=over_represented_pvalue, 
-               size=numDEInCat)) +
-        geom_point() +
-  scale_colour_gradient(low = "red", high = "yellow")+
-        expand_limits(x=0) +
-        labs(x="% Differentially Expressed in GO Category", y="Biological Process GO term", colour="p value", size="Count")+
-  theme_bw()+
-  facet_grid("Site", scales="free_y", labeller = as_labeller(c(Backreef = "BACKREEF HIGHER EXPRESSION", Forereef = "FOREREEF HIGHER EXPRESSION")))
+# Treeplot
+enrichres2 <- pairwise_termsim(enrichres) # calculate pairwise similarities of the enriched terms using Jaccard’s similarity index
+treeplot(enrichres2)
 
-
-BR.MF.INT$Site <- "Backreef"
-FR.MF.INT$Site <- "Forereef"
-MF.GO.plotting <- rbind(BR.MF.INT, FR.MF.INT)
-
-MF.GO.DEG <- MF.GO.plotting %>% 
-    #top_n(nrow(MF.GO.plotting)) %>% 
-    mutate(hitsPerc=numDEInCat*100/numInCat) %>% 
-    ggplot(aes(x=hitsPerc, 
-               y=term, 
-               colour=over_represented_pvalue, 
-               size=numDEInCat)) +
-        geom_point() +
-  scale_colour_gradient(low = "red", high = "yellow")+
-        expand_limits(x=0) +
-        labs(x="% Differentially Expressed in GO Category", y="Molecular Functions GO term", colour="p value", size="Count")+
-  theme_bw()+
-  facet_grid("Site", scales="free_y", labeller = as_labeller(c(Backreef = "BACKREEF HIGHER EXPRESSION", Forereef = "FOREREEF HIGHER EXPRESSION")))
-
-
-ggsave("Figures/BPGOplots.pdf", BP.GO.DEG, width = 10, height=10)
-ggsave("Figures/BPGOplots.png", BP.GO.DEG, width = 10, height=10)
-
-ggsave("Figures/MFGOplots.pdf", MF.GO.DEG, width = 10, height=10)
-ggsave("Figures/MFGOplots.png", MF.GO.DEG, width = 10, height=10)
 
 ```
+

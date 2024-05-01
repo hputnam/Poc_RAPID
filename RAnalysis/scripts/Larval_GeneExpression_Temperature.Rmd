@@ -22,6 +22,14 @@ library("strex")
 library("ggpubr")
 library("ggplotify")
 library("EnhancedVolcano")
+library("enrichplot")
+library("rrvgo")
+library("ggtree")
+library("tidytree")
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(GOSemSim)
+library(DOSE)
 
 ```
 
@@ -222,7 +230,7 @@ up.28.sig.list.annot <- left_join(up.28.sig.list, Annot,  by="Gene")
 
 ```
 
-#Plotting Differentially Expressed Genes (DEGs)
+#Plotting Differentially Expressed Genes (DEGs) PCA
 ```{r}
 #### Plotting DEG PCA
 
@@ -254,7 +262,7 @@ PCA.plot
 dev.off()
 
 ```
-
+#### Plotting DEG heatmap
 ```{r}
 #### Plotting DEG heatmap
 
@@ -380,7 +388,7 @@ LENGTH <-calc.lengths
 GO.terms <-Annot[,c(2,13)]
 splitted <- strsplit(as.character(GO.terms$Gene_ontology_IDs), ";") #split into multiple GO ids
 GO.terms <- data.frame(v1 = rep.int(GO.terms$Gene, sapply(splitted, length)), v2 = unlist(splitted)) #list all GOs with each assigned transcript
-
+GO.terms$v2 <- gsub(" GO:", "GO:",GO.terms$v2)
 
 #change contig lists to vectors
 ALL.vector <-c(t(ALL))
@@ -421,6 +429,92 @@ L31.BP.INT <- BP.INT[order(BP.INT$numDEInCat),]
 
 ```
 
+#Plotting BP enriched in DEGS from Larvae at 31
+```{r}
+
+#clustering utils
+nodeid.tbl_tree <- utils::getFromNamespace("nodeid.tbl_tree", "tidytree")
+rootnode.tbl_tree <- utils::getFromNamespace("rootnode.tbl_tree", "tidytree")
+offspring.tbl_tree <- utils::getFromNamespace("offspring.tbl_tree", "tidytree")
+offspring.tbl_tree_item <- utils::getFromNamespace(".offspring.tbl_tree_item", "tidytree")
+child.tbl_tree <- utils::getFromNamespace("child.tbl_tree", "tidytree")
+parent.tbl_tree <- utils::getFromNamespace("parent.tbl_tree", "tidytree")
+
+# similarity of GO terms in the DEG list for BP
+simMatrix <- calculateSimMatrix(L31.BP.INT$category,
+                                orgdb="org.Hs.eg.db", #human database
+                                ont=c("BP"),
+                                method="Rel")
+
+
+scores <- setNames(-log(L31.BP.INT$over_represented_pvalue), L31.BP.INT$category)
+reducedTerms <- reduceSimMatrix(simMatrix,
+                                scores,
+                                threshold=0.9,
+                                orgdb="org.Hs.eg.db")
+colnames(reducedTerms)[1] <- "category"
+dd <- left_join(reducedTerms, L31.BP.INT, by="category")
+
+hc <- hclust(dist(simMatrix))
+parents <- length(unique(reducedTerms$parentTerm))
+clus <- cutree(hc, parents)
+g <- split(names(clus), clus)
+
+p <- ggtree(hc)
+clades <- sapply(g, function(n) MRCA(p, n))
+p <- groupClade(p, clades, group_name='subtree') + aes(color=subtree)
+
+d <- data.frame(label = names(clus), 
+                  Parent.Term = reducedTerms[names(clus), "parentTerm"],
+                  padj = reducedTerms[names(clus), "parentTerm"])
+
+#identifying nodes for color blocks
+ggtree(hc) + geom_text(aes(label=node), hjust=-.3)
+
+pdf("figures/L31.BP.GOTree.pdf", height=6, width=10)
+p %<+% d + 
+  #geom_tippoint(size=2, shape=21, color='black', align=TRUE) + 
+  geom_tiplab(aes(label=label), size=2, hjust=-0.3, color='black', align=TRUE, linesize=0) +
+  geom_hilight(node=98, fill="lightblue") +
+  geom_cladelabel(node=98, label="Parent", 
+                  color="black", offset=.5, align=TRUE)+
+  geom_hilight(node=103, fill="yellow")+
+  geom_cladelabel(node=103, label="Parent", 
+                  color="black", offset=.5, align=TRUE)+
+  geom_hilight(node=102, fill="darkgreen")+
+  geom_cladelabel(node=102, label="Parent", 
+                  color="black", offset=.5, align=TRUE)+
+  geom_hilight(node=94, fill="green")+
+  geom_cladelabel(node=94, label="Parent", 
+                  color="black", offset=.5, align=TRUE)+
+  geom_hilight(node=95, fill="pink")+
+    geom_cladelabel(node=95, label="Parent", 
+                  color="black", offset=.5, align=TRUE)+
+  geom_hilight(node=96, fill="blue")+
+    geom_cladelabel(node=96, label="Parent", 
+                  color="black", offset=.5, align=TRUE)+
+  geom_hilight(node=101, fill="cyan")+
+    geom_cladelabel(node=101, label="Parent", 
+                  color="black", offset=.5, align=TRUE)+
+  geom_hilight(node=100, fill="coral")+
+    geom_cladelabel(node=100, label="Parent", 
+                  color="black", offset=.5, align=TRUE)+
+  geom_hilight(node=104, fill="lightgreen")+
+    geom_cladelabel(node=104, label="Parent", 
+                  color="black", offset=.5, align=TRUE)+
+  geom_hilight(node=105, fill="orange")+
+    geom_cladelabel(node=105, label="Parent", 
+                  color="black", offset=.5, align=TRUE)+
+  geom_hilight(node=92, fill="red")+
+  geom_cladelabel(node=92, label="Parent", 
+                  color="black", offset=.5, align=TRUE)+
+  #geom_point(aes(x, y, size= value, colour=group)
+  theme_tree2()+
+  theme(legend.position="none")
+dev.off()
+
+```
+
 #GO enrichment of DEGs that are HIGHER IN EXPRESSION at 28
 ```{r}
 
@@ -433,7 +527,7 @@ LENGTH <-calc.lengths
 GO.terms <-Annot[,c(2,13)]
 splitted <- strsplit(as.character(GO.terms$Gene_ontology_IDs), ";") #split into multiple GO ids
 GO.terms <- data.frame(v1 = rep.int(GO.terms$Gene, sapply(splitted, length)), v2 = unlist(splitted)) #list all GOs with each assigned transcript
-
+GO.terms$v2 <- gsub(" GO:", "GO:",GO.terms$v2)
 
 #change contig lists to vectors
 ALL.vector <-c(t(ALL))
@@ -474,21 +568,20 @@ L28.BP.INT <- BP.INT[order(BP.INT$numDEInCat),]
 
 ```
 
-
 # replotting DEGs with GO enrichment
 ```{r}
 
 data2.labels <- data.frame(
-  x = c(14, 1.8), 
+  x = c(14, 1.8),
   y = c(13, -13),
   padj=c(0,0),
   text.lab = c("Higher at 31°C", "Higher at 28°C")
   )
 
-data.GOBP.labels <- data.frame(  
+data.GOBP.labels <- data.frame(
   x = c(55,54,53,52,51,50,49,48,47,46,45,44,43,42,41,40,
         39,38,37,36,35,34,33,32,31,30,29,28,27,26,25,24,23,22,
-        21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1), 
+        21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1),
   y = c(-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,
         -9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,
         -9,-9,-9,9,9,9,9,9,9,9,9,9,9,9,9),
@@ -501,10 +594,10 @@ data.GOBP.labels <- data.frame(
   "","","","","","","","","","",
   "","","","",""))
 
-data.GOMF.labels <- data.frame(  
+data.GOMF.labels <- data.frame(
   x = c(55,54,53,52,51,50,49,48,47,46,45,44,43,42,41,40,
         39,38,37,36,35,34,33,32,31,30,29,28,27,26,25,24,23,22,
-        21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1), 
+        21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1),
   y = c(-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,
         -9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,
         -9,-9,-9,9,9,9,9,9,9,9,9,9,9,9,9),
@@ -515,7 +608,7 @@ data.GOMF.labels <- data.frame(
   "","","calcium ion binding","","calcium ion binding","","","","","",
   "","calcium ion binding","","","DNA helicase activity","","calcium ion binding","","","",
   "","","","","","protein tyrosine phosphatase activity","","","","",
-  "","	
+  "","
 IgM binding","","","",""))
 
 pdf("figures/DEG_LFC_Larvae_Temperature.pdf", height = 8, width = 10)
@@ -527,8 +620,8 @@ Output %>% arrange(log2FoldChange) %>%
   geom_segment(aes(x=label, xend=label, y=0, yend=log2FoldChange)) +
   geom_vline(xintercept = 12 + 0.5, linetype = "dashed") + # Add vertical line
   geom_text(data = data2.labels, aes(x = x, y = y, label = text.lab), color="black",size=5)+
-  geom_text(data = data.GOBP.labels, aes(x = x, y = y, label = text.lab), color="black",size=2.8)+
-  geom_text(data = data.GOMF.labels, aes(x = x, y = y, label = text.lab), color="blue",size=2.8)+
+  #geom_text(data = data.GOBP.labels, aes(x = x, y = y, label = text.lab), color="black",size=2.8)+
+  #geom_text(data = data.GOMF.labels, aes(x = x, y = y, label = text.lab), color="blue",size=2.8)+
   coord_flip()+
   theme_classic() +
   theme(legend.position = c(0.8, 0.45),
@@ -537,4 +630,261 @@ Output %>% arrange(log2FoldChange) %>%
 dev.off()
 
 ```
+
+# GO Plotting
+https://biostatsquid.com/pathway-enrichment-analysis-plots/#step5
+https://github.com/GuangchuangYu/enrichplot
+https://www.bioconductor.org/packages/devel/bioc/manuals/enrichplot/man/enrichplot.pdf
+
+#Plotting BP enriched in DEGS from Larvae at 28
+```{r}
+
+
+# similarity of GO terms in the DEG list for BP
+simMatrix <- calculateSimMatrix(L28.BP.INT$category,
+                                orgdb="org.Hs.eg.db", #human database
+                                ont=c("BP"),
+                                method="Rel")
+
+
+scores <- setNames(-log(L28.BP.INT$over_represented_pvalue), L28.BP.INT$category)
+reducedTerms <- reduceSimMatrix(simMatrix,
+                                scores,
+                                threshold=0.9,
+                                orgdb="org.Hs.eg.db")
+colnames(reducedTerms)[1] <- "category"
+dd <- left_join(reducedTerms, L28.BP.INT, by="category")
+
+hc <- hclust(dist(simMatrix))
+parents <- length(unique(reducedTerms$parentTerm))
+clus <- cutree(hc, parents)
+g <- split(names(clus), clus)
+
+p <- ggtree(hc)
+clades <- sapply(g, function(n) MRCA(p, n))
+p <- groupClade(p, clades, group_name='subtree') + aes(color=subtree)
+
+d <- data.frame(category = names(clus), 
+                  Parent.Term = reducedTerms[names(clus), "parentTerm"])
+
+#identifying nodes for color blocks
+ggtree(hc) + geom_text(aes(label=node), hjust=-.3)
+
+pdf("figures/L28.BP.GOTree.pdf", height=6, width=10)
+p %<+% d + 
+  #geom_tippoint(size=2, shape=21, color='black', align=TRUE) + 
+  geom_tiplab(aes(label=label), size=2, hjust=-0.3, color='black', align=TRUE, linesize=0) +
+  geom_hilight(node=52, fill="lightblue") +
+  geom_cladelabel(node=52, label="Parent", 
+                  color="black", offset=.5, align=TRUE)+
+  geom_hilight(node=7, fill="yellow")+
+  geom_cladelabel(node=7, label="Parent", 
+                  color="black", offset=.5, align=TRUE)+
+  geom_hilight(node=47, fill="brown")+
+  geom_cladelabel(node=47, label="Parent", 
+                  color="black", offset=.5, align=TRUE)+
+    geom_hilight(node=5, fill="lightgreen")+
+    geom_cladelabel(node=5, label="Parent", 
+                  color="black", offset=.5, align=TRUE)+
+    geom_hilight(node=42, fill="pink")+
+    geom_cladelabel(node=42, label="Parent", 
+                  color="black", offset=.5, align=TRUE)+
+  geom_hilight(node=44, fill="cyan")+
+    geom_cladelabel(node=44, label="Parent", 
+                  color="black", offset=.5, align=TRUE)+
+  geom_hilight(node=40, fill="darkgreen")+
+    geom_cladelabel(node=40, label="Parent", 
+                  color="black", offset=.5, align=TRUE)+
+  geom_hilight(node=39, fill="purple")+
+    geom_cladelabel(node=39, label="Parent", 
+                  color="black", offset=.5, align=TRUE)+
+  geom_hilight(node=38, fill="coral")+
+    geom_cladelabel(node=38, label="Parent", 
+                  color="black", offset=.5, align=TRUE)+
+  geom_hilight(node=49, fill="lightgreen")+
+    geom_cladelabel(node=49, label="hard palate development", 
+                  color="black", offset=.5, align=TRUE)+
+  geom_hilight(node=1, fill="orange")+
+    geom_cladelabel(node=1, label="negative regulation of epithelial cell migration", 
+                  color="black", offset=.5, align=TRUE)+
+  #geom_point(aes(x, y, size= value, colour=group)
+  theme_tree2()+
+  theme(legend.position="none")
+dev.off()
+
+```
+
+<!-- #Pocillopora verrucosa -->
+<!-- #NCBI Taxonomy ID: 203993 -->
+<!-- ```{r} -->
+<!-- library(AnnotationForge) -->
+<!-- makeOrgPackageFromNCBI(version = "0.1", -->
+<!--                        author = "hollie putnam <hollieputnam@gmail.com>", -->
+<!--                        maintainer = "hollie putnam <hollieputnam@gmail.com>", -->
+<!--                        outputDir = ".", -->
+<!--                        tax_id = "203993", -->
+<!--                        genus = "Pocillopora", -->
+<!--                        species = "verrucosa") -->
+
+
+<!-- ``` -->
+
+```{r}
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(enrichplot)
+library(GOSemSim)
+library(DOSE)
+data(geneList)
+gene <- names(geneList)[abs(geneList) > 2]
+ego <- enrichGO(gene  = gene,
+        universe      = names(geneList),
+        OrgDb         = org.Hs.eg.db,
+        ont           = "BP",
+        pAdjustMethod = "BH",
+        pvalueCutoff  = 0.05,
+        qvalueCutoff  = 0.05,
+        readable      = TRUE)
+
+str(ego)
+
+d <- godata('org.Hs.eg.db', ont="BP")
+#ego2 <- pairwise_termsim(ego, method = "Wang", semData = d)
+
+enrichres2 <- pairwise_termsim(ego) # calculate pairwise similarities of the enriched terms using Jaccard’s similarity index
+
+nodeid.tbl_tree <- utils::getFromNamespace("nodeid.tbl_tree", "tidytree")
+rootnode.tbl_tree <- utils::getFromNamespace("rootnode.tbl_tree", "tidytree")
+offspring.tbl_tree <- utils::getFromNamespace("offspring.tbl_tree", "tidytree")
+offspring.tbl_tree_item <- utils::getFromNamespace(".offspring.tbl_tree_item", "tidytree")
+child.tbl_tree <- utils::getFromNamespace("child.tbl_tree", "tidytree")
+parent.tbl_tree <- utils::getFromNamespace("parent.tbl_tree", "tidytree")
+
+treeplot(enrichres2)
+   
+``` 
+
+
+```{r}
+
+#conduct clustering of the similarity matrix
+hc <- hclust(dist(simMatrix))
+
+#plotting nodes
+pdf("figures/L31.BP.GOTree.Nodes.pdf", height=6, width=10)
+ggtree(hc) + geom_text(aes(label=node), hjust=-.3)+
+  geom_tiplab(aes(label=label), align=TRUE, size=3,linesize=0.1, as_ylab=TRUE) 
+dev.off()
+```
+
+```{r}
+# identify the information for each tip label in the data
+d1 <- data.frame(id=hc$labels,
+                 node=hc$order) #,val=rnorm(30, sd=3))
+colnames(d1)[1] <- "category"
+colnames(reducedTerms)[1] <- "category"
+d1 <- left_join(d1,reducedTerms, by="category")
+d1 <- left_join(d1,L31.BP.INT, by="category")
+
+ggplot(d1, aes(x = category, y = numDEInCat)) +
+  geom_segment( aes(x=category, xend=category, y=0, yend=numDEInCat)) +
+  geom_point(shape=16, stroke=2)+
+  coord_flip() +
+  theme_bw()
+
+# Reorder levels of category based on parentTerm
+d1 <- d1 %>% 
+  arrange(parentTerm) %>%
+  mutate(category = factor(category, levels = unique(category)))
+
+pdf("figures/L31_GO_Enrichment_semsim.pdf", width = 8, height = 10)
+d1 %>% 
+  ggplot(aes(x=category, y=over_represented_pvalue, colour=parentTerm)) +
+  #ylim(-16,16)+
+  geom_segment(aes(x=category, xend=category, y=0, yend=over_represented_pvalue, colour = parentTerm)) +
+  geom_point(aes(size=numDEInCat))+
+  scale_colour_discrete() + 
+  coord_flip()+
+  theme_classic() +
+  theme(legend.position = "right",
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 14, face = "bold"),
+        axis.text.x = element_text(size = 10))
+dev.off()
+
+```
+
+```{r}
+
+
+
+
+
+
+
+
+p <- ggtree(hc)
+
+# Make the initial plot
+pdf("figures/L31.BP.GOTree.pdf", height=6, width=12)
+p %<+% d1  + geom_text(aes(label=node), hjust=-.3, size=2)+
+  geom_hilight(node=98, fill="steelblue",  extendto = 0.3)+
+  geom_cladelabel(node=98, label="  lipoate biosynthetic process", 
+                  color="black", offset=.3, align=TRUE, fontsize = 2)+
+  xlim(-4,1.8)+
+  geom_hilight(node=103, fill="yellow",  extendto = 0.3)+
+  geom_cladelabel(node=103, label="  chromosome organization involved in meiotic cell cycle", 
+                  color="black", offset=.3, align=TRUE, fontsize = 2)+
+  geom_hilight(node=102, fill="darkgreen",  extendto = 0.3)+
+  geom_cladelabel(node=102, label="  maintenance of epithelial cell apical/basal polarity", 
+                  color="black", offset=.3, align=TRUE, fontsize = 2)+
+  geom_hilight(node=94, fill="green",  extendto = 0.3)+
+  geom_cladelabel(node=94, label="  regulation of neurotransmitter secretion", 
+                  color="black", offset=.3, align=TRUE, fontsize = 2)+
+  geom_hilight(node=95, fill="pink",  extendto = 0.3)+
+    geom_cladelabel(node=95, label="  bleb assembly", 
+                  color="black", offset=.3, align=TRUE, fontsize = 2)+
+  geom_hilight(node=96, fill="blue",  extendto = 0.3)+
+    geom_cladelabel(node=96, label="  negative regulation of endocytosis", 
+                  color="black", offset=.3, align=TRUE, fontsize = 2)+
+  geom_hilight(node=101, fill="cyan",  extendto = 0.3)+
+    geom_cladelabel(node=101, label="  negative regulation of cell volume", 
+                  color="black", offset=.3, align=TRUE, fontsize = 2)+
+  geom_hilight(node=100, fill="coral",  extendto = 0.3)+
+    geom_cladelabel(node=100, label="Parent", 
+                  color="black", offset=.3, align=TRUE, fontsize = 2)+
+  geom_hilight(node=104, fill="lightgreen",  extendto = 0.3)+
+    geom_cladelabel(node=104, label="Parent", 
+                  color="black", offset=.3, align=TRUE, fontsize = 2)+
+  geom_hilight(node=105, fill="orange",  extendto = 0.3)+
+    geom_cladelabel(node=105, label="  neuron projection development
+", 
+                  color="black", offset=.3, align=TRUE, fontsize = 2)+
+  geom_hilight(node=92, fill="red",  extendto = 0.3)+
+  geom_cladelabel(node=92, label="regulation of neurotransmitter secretion", 
+                  color="black", offset=.3, align=TRUE, fontsize = 2)+
+  geom_tiplab(aes(label=label), align=TRUE, size=4,linesize=0.1, as_ylab=TRUE, offset=.2)
+  #geom_hilight(data = d1, mapping=aes(node = node, fill=parentTerm,  extendto = 0.5))
+dev.off()
+
+```
+
+```{r}
+# Make a second plot with the original, naming the new plot "dot", 
+# using the data you just created, with a point geom.
+p2 <- facet_plot(p, panel="Number DE in Term", data=d1, geom=geom_point, aes(x=numDEInCat, color=over_represented_pvalue))
+
+# Make some more data with another random value.
+d2 <- data.frame(id=tree$tip.label, value = abs(rnorm(30, mean=100, sd=50)))
+
+# Now add to that second plot, this time using the new d2 data above, 
+# This time showing a bar segment, size 3, colored blue.
+p3 <- facet_plot(p2, panel='bar', data=d1, geom=geom_segment, 
+           aes(x=0, xend=value, y=y, yend=y), size=3, color='blue4') 
+
+# Show all three plots with a scale
+p3 + theme_tree2()
+
+```
+
 
