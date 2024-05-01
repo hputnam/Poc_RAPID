@@ -786,12 +786,6 @@ colnames(reducedTerms)[1] <- "category"
 d1 <- left_join(d1,reducedTerms, by="category")
 d1 <- left_join(d1,L31.BP.INT, by="category")
 
-ggplot(d1, aes(x = category, y = numDEInCat)) +
-  geom_segment( aes(x=category, xend=category, y=0, yend=numDEInCat)) +
-  geom_point(shape=16, stroke=2)+
-  coord_flip() +
-  theme_bw()
-
 # Reorder levels of category based on parentTerm
 d1 <- d1 %>% 
   arrange(parentTerm) %>%
