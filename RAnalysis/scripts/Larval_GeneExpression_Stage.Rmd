@@ -22,6 +22,15 @@ library("strex")
 library("ggpubr")
 library("ggplotify")
 library("EnhancedVolcano")
+library("enrichplot")
+library("rrvgo")
+library("ggtree")
+library("tidytree")
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(GOSemSim)
+library(DOSE)
+library(patchwork)
 
 ```
 
@@ -52,7 +61,7 @@ Annot <- readxl::read_xlsx("data/Tagseq_zymo_genohub/FileS2_Pver_gene_annot_May2
 #filtering values for PoverA
 ```{r}
 
-#filter to 28°C samples 
+#filter to larval stage
 TranscriptCountData <- TranscriptCountData[,c(1:5,7,9,11)]
 sample_ColData <- sample_ColData[c(1:5,7,9,11),]
 
@@ -115,22 +124,14 @@ colnames(sampleDistMatrix) <- sample_ColData$group
 #assign colors
 colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
 
-
 #### Plotting heatmap for Expression Visualization of all genes in each sample
-
-#pdf(file="Output/gene_expression_heatmap_all.pdf")
 pheatmap(sampleDistMatrix, #plot matrix of expression similarity
          clustering_distance_rows=sampleDists, #cluster rows
          clustering_distance_cols=sampleDists, #cluster columns
          col=colors) #set colors
-#dev.off()
 
 #### Plotting PCA from Expression visualization
-
-#pdf(file="Output/PCA_all.pdf")
 plotPCA(rld, intgroup = c("group")) #plot PCA of samples with all data
-#dev.off()
-
 
 ```
 
@@ -177,18 +178,14 @@ sig <- subset(DEG.int.res, padj<0.05,)
 sig.list <- data[which(rownames(data) %in% rownames(sig)),]
 
 #save DEG list
-write.csv(counts(sig.list), file="Output/DEG_05FDR_Stage.csv")
+write.csv(counts(sig.list), file="Output/DEG_05FDR.Stage.csv")
 
 #save DEG df
 res_df <- as.data.frame(DEG.int.res)
 res_df <- res_df %>% 
   subset(padj<0.05)
-```
 
-Comparing Embryos and Larvae
-```{r}
-
-#subset upregulated in embryos°C
+#subset upregulated in Embryos
 up.EMB.sig <- res_df %>% 
   subset(padj<0.05) %>%
   subset(log2FoldChange<0) #negative values are higher in the Forereef
@@ -204,9 +201,7 @@ up.EMB.sig.list <- as.data.frame(counts(up.EMB.sig.list))
 up.EMB.sig.list$Gene <- rownames(up.EMB.sig.list)
 up.EMB.sig.list.annot <- left_join(up.EMB.sig.list, Annot,  by="Gene")
 
-
-
-#subset upregulated in larvae
+#subset upregulated at Larvae
 up.LAR.sig <- res_df %>% 
   subset(padj<0.05) %>%
   subset(log2FoldChange>0) #negative values are higher in the Forereef
@@ -225,12 +220,12 @@ up.LAR.sig.list.annot <- left_join(up.LAR.sig.list, Annot,  by="Gene")
 
 ```
 
-#Plotting Differentially Expressed Genes (DEGs)
+#Plotting Differentially Expressed Genes (DEGs) PCA
 ```{r}
 #### Plotting DEG PCA
 
-# set  colors
-cols <- c("Embryo_28" = "orange","Larvae_28" = "cyan")
+# set site colors
+cols <- c("Embryo_28" = "coral","Larvae_28" = "lightblue")
 
 rsig <- rlog(sig.list, blind=FALSE)
 
@@ -238,7 +233,6 @@ PCA.plot.auto <- plotPCA(rsig, intgroup = c("group")) #Plot PCA of all samples f
 PCA.plot.auto #view plot
 
 PC.info <-PCA.plot.auto$data #extract plotting data
-
 
 #plot PCA results
 pdf(file="figures/Pverr_larvae_stage_PCA.DEG.pdf")
@@ -251,18 +245,18 @@ ggplot(aes(x=PC1, y=PC2,color=group), group=group)+
   xlab(paste0(PCA.plot.auto$labels$x[1]))+
   ylab(paste0(PCA.plot.auto$labels$y[1]))+
   theme_bw()+
-  theme(legend.position = c(0.8, 0.2),
+  theme(legend.position = c(0.8, 0.8),
          text = element_text(size=15))
 PCA.plot 
 dev.off()
 
 ```
-
+#### Plotting DEG heatmap
 ```{r}
 #### Plotting DEG heatmap
 
 ann_colors = list(
-  group = c("Embryo_28" = "orange","Larvae_28" = "cyan"))
+  group = c("Embryo_28" = "coral","Larvae_28" = "lightblue"))
 
 #make an expression object
 mat <- assay(rsig)#
@@ -270,14 +264,13 @@ mat <- assay(rsig)#
 #make dataframe
 df <- data.frame(colData(rsig)[c("group")])
 
-#pdf(file="Output/DEG_Heatmap.pdf")
 pheatmap(mat, color=inferno(10), annotation_col = df, clustering_method = "average", scale="row",
                 clustering_distance_rows="euclidean", show_rownames =F, cluster_cols=T,
                 show_colnames =F, gaps_col = c(5)) #plot heatmap of all DEG by group
-#dev.off()
+
 
 #plot heatmap by site
-pdf("output/Pverr_Stage_DEG_heaptmap_relative.pdf")
+pdf("output/Pverr_larvae_Stage_DEG_heatmap_relative.pdf")
 Hmap <- pheatmap(mat, color=inferno(10), annotation_col = df, annotation_colors = ann_colors, clustering_method = "average", scale="row",  clustering_distance_rows="euclidean", show_rownames =F, fontsize_row=8, cluster_cols=T, show_colnames =F, gaps_col = c(5)) #plot heatmap of all DEG by group
 Hmap 
 dev.off()
@@ -286,8 +279,8 @@ dev.off()
 #Plotting PCA and Heatmap together
 ```{r}
 DEplots <- ggarrange(PCA.plot, as.grob(Hmap), ncol=2, labels = c("A)","B)"))
-ggsave("figures/Pverr_DEplots_Stage.pdf", DEplots, width = 16, height=8)
-ggsave("figures/Pverr_DEplots_Stage.png", DEplots, width = 16, height=8)
+ggsave("figures/Pverr_larvae_DEplots_Stage.pdf", DEplots, width = 16, height=8)
+ggsave("figures/Pverr_larvae_DEplots_Stage.png", DEplots, width = 16, height=8)
 
 
 ```
@@ -298,14 +291,10 @@ ggsave("figures/Pverr_DEplots_Stage.png", DEplots, width = 16, height=8)
 DEGs <- res_df
 DEGs$Gene <- rownames(DEGs)
 Output <- left_join(DEGs,Annot,  by="Gene")
-write.csv(Output,"output/Annotated_Stage_DEGS.csv")
+write.csv(Output,"output/Annotated_DEGS.csv")
 
-#Output <- Output %>% separate(Hit_description, into = c("Hit_description1", "Hit_description2"),sep = "\\(|\\)")
-
-```
-
-up and down plot
-```{r}
+Output <- Output %>% separate(Hit_description, into = c("Hit_description1", "Hit_description2"),
+          sep = "\\(|\\)")
 
 Output$label <- paste0(Output$Hit_description1, " (", Output$Gene, ")")
 Output$label <- gsub("Pver_gene_", "", Output$label)
@@ -313,15 +302,38 @@ Output$label <- gsub("Pver_gene_", "", Output$label)
 Output$label <- factor(Output$label, levels = Output$label[order(Output$log2FoldChange)])
 
 
-Output %>% arrange(log2FoldChange) %>%
+data2.labels <- data.frame(
+  x = c(14, 11),
+  y = c(6, -6),
+  padj=c(0,0),
+  text.lab = c("Higher in Embryoe", "Higher in Larvae")
+  )
+
+pdf("figures/DEG_LFC_Larvae_Stage.pdf", height = 12, width = 24)
+DEG_LFC <- Output %>% arrange(log2FoldChange) %>%
   ggplot(aes(x=label, y=log2FoldChange, colour=padj)) +
-  ylim(-8,10)+
-          geom_point(size=2)+
-          scale_colour_gradientn(colours = colorspace::heat_hcl(7))+
-  geom_segment(aes(x=label, xend=label, y=0, yend=log2FoldChange)) +
-   geom_vline(xintercept = 12 + 0.5, linetype = "dashed") + # Add vertical line
+  #ylim(-10,10)+
+  geom_point(size=2)+
+  scale_colour_gradientn(colours = colorspace::heat_hcl(7))+
+  geom_segment(aes(x=label, xend=label, y=0, yend=log2FoldChange),linewidth=1) +
+  #geom_vline(xintercept = 12 + 0.5, linetype = "dashed") + # Add vertical line
+  #geom_text(data = data2.labels, aes(x = x, y = y, label = text.lab), color="black",size=8)+
+  #geom_text(data = data.GOBP.labels, aes(x = x, y = y, label = text.lab), color="black",size=2.8)+
+  #geom_text(data = data.GOMF.labels, aes(x = x, y = y, label = text.lab), color="blue",size=2.8)+
   coord_flip()+
-  theme_classic()
+  theme_classic() +
+  theme(legend.position = c(0.8, 0.1),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 14, face = "bold"),
+        plot.title = element_text(size = 40, face = "bold"))+
+  ggtitle('A')
+DEG_LFC
+dev.off()
+
+
+
+
+
 ```
 
 # GO ENRICHMENT
@@ -336,19 +348,19 @@ calc.lengths <- calc.lengths[,c(9:10)]
 colnames(calc.lengths)[1] <- "Gene"
 ```
 
-#GO enrichment of DEGs that are HIGHER IN EXPRESSION in embryos
+#GO enrichment of DEGs that are HIGHER IN EXPRESSION in Embryos
 ```{r}
 
 ALL<-row.names(data) #set the all transcripts list
 DEG <- as.character(row.names(up.EMB.sig.list)) #set the enrichment test list
 IDs <- row.names(data) #set ID names
-LENGTH <-calc.lengths
+LENGTH <-calc.lengths #set length information
 
 #load GO terms for all genes in the genome
 GO.terms <-Annot[,c(2,13)]
 splitted <- strsplit(as.character(GO.terms$Gene_ontology_IDs), ";") #split into multiple GO ids
 GO.terms <- data.frame(v1 = rep.int(GO.terms$Gene, sapply(splitted, length)), v2 = unlist(splitted)) #list all GOs with each assigned transcript
-GO.terms$v2 <- gsub(" GO:", "GO:",GO.terms$v2)
+GO.terms$v2 <- gsub(" GO:", "GO:",GO.terms$v2) #remove empty spaces before GO
 
 #change contig lists to vectors
 ALL.vector <-c(t(ALL))
@@ -383,13 +395,117 @@ EMB.CC.INT <- CC.INT[order(CC.INT$numDEInCat),]
 BP.INT <- subset(enriched.GO.05, ontology=="BP")
 EMB.BP.INT <- BP.INT[order(BP.INT$numDEInCat),]
 #write.csv(ALL , file = "Output/Transcriptome_GOTerms.csv")
-#write.csv(MF.INT , file = "Output/BR.MF_Sig_Enriched_GO.05_INT.csv")
-#write.csv(CC.INT , file = "Output/BR.CC_Sig_Enriched_GO.05_INT.csv")
-#write.csv(BP.INT , file = "Output/BR.BP_Sig_Enriched_GO.05_INT.csv")
+#write.csv(MF.INT , file = "Output/MF_Sig_Enriched_GO.05.csv")
+#write.csv(CC.INT , file = "Output/CC_Sig_Enriched_GO.05.csv")
+#write.csv(BP.INT , file = "Output/BP_Sig_Enriched_GO.05.csv")
 
 ```
 
-#GO enrichment of DEGs that are HIGHER IN EXPRESSION in Larvae
+#Plotting BP enriched in DEGS up.EMB.sig.list
+```{r}
+# similarity of GO terms in the DEG list for BP
+simMatrix <- calculateSimMatrix(EMB.BP.INT$category,
+                                orgdb="org.Hs.eg.db", #human database
+                                ont=c("BP"),
+                                method="Rel")
+
+#scoring sig enriched terms by pvalue
+scores <- setNames(-log(EMB.BP.INT$over_represented_pvalue), EMB.BP.INT$category)
+
+#reducing sig enriched terms to higher order terms and grouping them together by a threshold value
+# and weighting them by scores of pvalue
+#higher thresholds result in fewer groups
+reducedTerms.EMB <- reduceSimMatrix(simMatrix,
+                                scores,
+                                threshold=0.9,
+                                orgdb="org.Hs.eg.db")
+colnames(reducedTerms.EMB)[1] <- "category"
+
+#pdf("figures/EMB_GO_Enrichment_semsim.pdf", width = 8, height = 8)
+treemapPlot(reducedTerms.EMB)
+#dev.off()
+
+#conduct clustering of the similarity matrix
+hc <- hclust(dist(simMatrix))
+
+# identify the information for each tip label in the data
+d1 <- data.frame(id=hc$labels,
+                 node=hc$order) #,val=rnorm(30, sd=3))
+colnames(d1)[1] <- "category"
+colnames(reducedTerms.EMB)[1] <- "category"
+d1 <- left_join(d1,reducedTerms.EMB, by="category")
+d1 <- left_join(d1,EMB.BP.INT, by="category")
+
+# Reorder levels of category based on parentTerm
+d1 <- d1 %>% 
+  arrange(parentTerm) %>%
+  mutate(category = factor(category, levels = unique(category)))
+
+#my_colors <- c("pink", "red", "cyan", "blue", "yellow", "orange", "violet", "purple", "brown","tan", "gray")
+
+# Calculate count of each parentTerm
+d1_count <- d1 %>%
+  group_by(parentTerm) %>%
+  summarise(count = n())
+
+# Filter parentTerms with more than n occurrences
+d1_filtered_more <- d1_count %>%
+  filter(count > 9) %>%
+  inner_join(d1, by = "parentTerm")
+
+d1_filtered_less <- d1_count %>%
+  filter(count < 10) %>%
+  inner_join(d1, by = "parentTerm")
+
+#pdf("figures/EMB_GO_Enrichment_semsim.pdf", width = 8, height = 24)
+EMB.BPGO.more <- d1_filtered_more %>%
+  ggplot(aes(x=category, y=-log10(over_represented_pvalue), colour=parentTerm)) +
+  #ylim(-16,16)+
+  geom_segment(aes(x=category, xend=category, y=0, yend=-log10(over_represented_pvalue), colour = parentTerm),
+               linewidth=1) +
+  geom_point(aes(size=numDEInCat), colour="black")+
+  facet_grid(parentTerm ~ ., scales="free_y", labeller = label_wrap_gen(width = 2, multi_line = TRUE))+
+  scale_colour_discrete() + 
+  coord_flip()+
+  theme_classic() +
+  theme(legend.position = "none",
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 14, face = "bold"),
+        axis.text.x = element_text(size = 4),
+        axis.text.y = element_text(size = 4),
+        plot.title = element_text(size = 40, face = "bold"))+
+  ggtitle('B')
+EMB.BPGO.more
+#dev.off()
+
+EMB.BPGO.less <- d1_filtered_less %>%
+  ggplot(aes(x=category, y=-log10(over_represented_pvalue), colour=parentTerm)) +
+  #ylim(-16,16)+
+  geom_segment(aes(x=category, xend=category, y=0, yend=-log10(over_represented_pvalue), colour = parentTerm),
+               linewidth=1) +
+  geom_point(aes(size=numDEInCat), colour="black")+
+  facet_grid(parentTerm ~ ., scales="free_y", labeller = label_wrap_gen(width = 2, multi_line = TRUE))+
+  scale_colour_discrete() + 
+  coord_flip()+
+  theme_classic() +
+  theme(legend.position = "none",
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 14, face = "bold"),
+        axis.text.x = element_text(size = 4),
+        axis.text.y = element_text(size = 4),
+        plot.title = element_text(size = 40, face = "bold"))+
+  ggtitle('B')
+EMB.BPGO.less
+#dev.off()
+
+EMB.GOplots <- ggarrange(EMB.BPGO.more, EMB.BPGO.less, ncol=2)
+ggsave("figures/EMB_GO_Enrichment_semsim.pdf", EMB.GOplots, width = 10, height=16)
+ggsave("figures/EMB_GO_Enrichment_semsim.png", EMB.GOplots, width = 10, height=16)
+
+
+```
+
+#GO enrichment of DEGs that are HIGHER IN EXPRESSION IN LARVAE
 ```{r}
 
 ALL<-row.names(data) #set the all transcripts list
@@ -441,14 +557,130 @@ LAR.BP.INT <- BP.INT[order(BP.INT$numDEInCat),]
 #write.csv(BP.INT , file = "Output/BR.BP_Sig_Enriched_GO.05_INT.csv")
 
 ```
+
+
 # GO Plotting
-https://biostatsquid.com/pathway-enrichment-analysis-plots/#step5
+#Plotting BP enriched in DEGS from Larvae 
 ```{r}
 
-# Treeplot
-enrichres2 <- pairwise_termsim(enrichres) # calculate pairwise similarities of the enriched terms using Jaccard’s similarity index
-treeplot(enrichres2)
+# similarity of GO terms in the DEG list for BP
+simMatrix <- calculateSimMatrix(LAR.BP.INT$category,
+                                orgdb="org.Hs.eg.db", #human database
+                                ont=c("BP"),
+                                method="Rel")
+
+
+scores <- setNames(-log(LAR.BP.INT$over_represented_pvalue), LAR.BP.INT$category)
+reducedTerms.LAR <- reduceSimMatrix(simMatrix,
+                                scores,
+                                threshold=0.9,
+                                orgdb="org.Hs.eg.db")
+colnames(reducedTerms.LAR)[1] <- "category"
+
+#pdf("figures/LAR_GO_Enrichment_semsim.pdf", width = 8, height = 8)
+Lar.tree <- treemapPlot(reducedTerms.LAR)
+#dev.off()
+
+#conduct clustering of the similarity matrix
+hc <- hclust(dist(simMatrix))
+
+# identify the information for each tip label in the data
+d2 <- data.frame(id=hc$labels,
+                 node=hc$order) #,val=rnorm(30, sd=3))
+colnames(d2)[1] <- "category"
+colnames(reducedTerms.LAR)[1] <- "category"
+d2 <- left_join(d2,reducedTerms.LAR, by="category")
+d2 <- left_join(d2,LAR.BP.INT, by="category")
+
+# Reorder levels of category based on parentTerm
+d2 <- d2 %>% 
+  arrange(parentTerm) %>%
+  mutate(category = factor(category, levels = unique(category)))
+
+#my_colors <- c("pink", "red", "cyan", "blue", "yellow", "orange", "violet", "purple", "brown","tan", "gray")
+
+# Calculate count of each parentTerm
+d2_count <- d2 %>%
+  group_by(parentTerm) %>%
+  summarise(count = n())
+
+# Filter parentTerms with more than n occurrences
+d2_filtered_more <- d2_count %>%
+  filter(count > 9) %>%
+  inner_join(d2, by = "parentTerm")
+
+d2_filtered_less <- d2_count %>%
+  filter(count < 10) %>%
+  inner_join(d2, by = "parentTerm")
+
+#pdf("figures/LAR_GO_Enrichment_semsim.pdf", width = 7, height = 20)
+LARBPGO.more <- d2_filtered_more %>%
+  ggplot(aes(x=category, y=-log10(over_represented_pvalue), colour=parentTerm)) +
+  #ylim(-16,16)+
+  geom_segment(aes(x=category, xend=category, y=0, yend=-log10(over_represented_pvalue), colour = parentTerm),
+               linewidth=1) +
+  geom_point(aes(size=numDEInCat), colour="black")+
+  facet_grid(parentTerm ~ ., scales="free_y", labeller = label_wrap_gen(width = 1, multi_line = TRUE))+
+  #scale_colour_manual(values = my_colors) +  # Set manual colors 
+  coord_flip()+
+  theme_classic() +
+  theme(legend.position = "none",
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 14, face = "bold"),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 3),
+        plot.title = element_text(size = 40, face = "bold"),
+        strip.text.y = element_text(angle=0, size = 4))
+LARBPGO.more 
+
+LARBPGO.less <- d2_filtered_less %>%
+  ggplot(aes(x=category, y=-log10(over_represented_pvalue), colour=parentTerm)) +
+  #ylim(-16,16)+
+  geom_segment(aes(x=category, xend=category, y=0, yend=-log10(over_represented_pvalue), colour = parentTerm),
+               linewidth=1) +
+  geom_point(aes(size=numDEInCat), colour="black")+
+  facet_grid(parentTerm ~ ., scales="free_y", labeller = label_wrap_gen(width = 1, multi_line = TRUE))+
+  #scale_colour_manual(values = my_colors) +  # Set manual colors 
+  coord_flip()+
+  theme_classic() +
+  theme(legend.position = "none",
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 14, face = "bold"),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 3),
+        plot.title = element_text(size = 40, face = "bold"),
+        strip.text.y = element_text(angle=0, size = 4))
+LARBPGO.less 
+#dev.off()
+
+LAR.GOplots <- ggarrange(LARBPGO.more, LARBPGO.less, ncol=2)
+ggsave("figures/LAR_GO_Enrichment_semsim.pdf", LAR.GOplots, width = 10, height=16)
+ggsave("figures/LAR_GO_Enrichment_semsim.png", LAR.GOplots, width = 10, height=16)
 
 
 ```
+
+# combining plots
+```{r}
+
+#DEG_LFC
+#L31BPGO 
+#L28BPGO
+
+# One plot at the left and two at the right
+pdf("figures/Temperature_DEG_GO.pdf", height=24, width = 22)
+(DEG_LFC)|(L31BPGO / L28BPGO) + plot_layout(heights = c(1.9, 1.1), guides = "collect")
+dev.off()
+
+# stages
+
+pdf("figures/EMB.LAR.GOplots_Enrichment_semsim.pdf", width = 16, height=8)
+treemapPlot(reducedTerms.EMB)
+treemapPlot(reducedTerms.LAR)
+dev.off()
+
+
+
+```
+
 
