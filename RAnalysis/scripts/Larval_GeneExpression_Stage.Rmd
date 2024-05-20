@@ -38,15 +38,17 @@ library(patchwork)
 ```{r}
 #read in metadata
 sample_ColData <- read.csv("data/Tagseq_zymo_genohub/Pverr_larvae_Seq_Sample_Info.csv", header=TRUE, sep=",")
-print(sample_ColData)
+#generate a grouping variable
 sample_ColData$group <- paste0(sample_ColData$Stage,"_",sample_ColData$Temperature)
 
 #Read in data
 TranscriptCountData <- as.data.frame(read.csv(file= "data/Tagseq_zymo_genohub/Pverr_larvae_gene_count_matrix.csv", sep=",", header = TRUE))
 head(TranscriptCountData)
-
+#assign the first row of gene names as rownames
 rownames(TranscriptCountData) <- TranscriptCountData[,1]
+#remove gene names so only numeric counts data are in dataset
 TranscriptCountData <- TranscriptCountData[,-1]
+#view data
 head(TranscriptCountData)
 ```
 
@@ -61,8 +63,9 @@ Annot <- readxl::read_xlsx("data/Tagseq_zymo_genohub/FileS2_Pver_gene_annot_May2
 #filtering values for PoverA
 ```{r}
 
-#filter to larval stage
+#filter data to embryo and larval stage at 28°
 TranscriptCountData <- TranscriptCountData[,c(1:5,7,9,11)]
+#filter sample metadata to embryo and larval stage at 28°
 sample_ColData <- sample_ColData[c(1:5,7,9,11),]
 
 #set filter values for PoverA, P percent of the samples have counts over A
@@ -87,17 +90,18 @@ head(filt.count.mat)
 #assign tube ids as rownames in metadata
 rownames(sample_ColData) <- sample_ColData$Tube_ID
 
-rownames(sample_ColData)
+#view sample names in data
 colnames(filt.count.mat) 
+#view sample names in metadata
+rownames(sample_ColData)
 
 # Check all sample IDs in sample_ColData are also in TranscriptCountData and match their orders
 all(rownames(sample_ColData) %in% colnames(filt.count.mat))  #Should return TRUE
-# returns TRUE
-all(rownames(sample_ColData) == colnames(filt.count.mat))    # should return TRUE
-#returns TRUE
+all(rownames(sample_ColData) == colnames(filt.count.mat))    #Should return TRUE
 
 #identify the treatment column levels
 sample_ColData$group <- factor(sample_ColData$group)
+#view levels
 levels(sample_ColData$group)
 
 ```
@@ -306,7 +310,7 @@ data2.labels <- data.frame(
   x = c(14, 11),
   y = c(6, -6),
   padj=c(0,0),
-  text.lab = c("Higher in Embryoe", "Higher in Larvae")
+  text.lab = c("Higher in Embryos", "Higher in Larvae")
   )
 
 pdf("figures/DEG_LFC_Larvae_Stage.pdf", height = 12, width = 24)
@@ -339,28 +343,40 @@ dev.off()
 # GO ENRICHMENT
 # Gene Length
 ```{r}
+#read in the genome gff file
 calc.lengths <- read.table("data/Tagseq_zymo_genohub/Pver_genome_assembly_v1.0_fixed.gff3", header=F)
+#filter to the mRNA
 calc.lengths <- calc.lengths %>% filter(V3=="mRNA")
+#calculate the length from the stop and start values
 calc.lengths$length <- calc.lengths$V5 - calc.lengths$V4
+#trim the IDs to the gene name only
 calc.lengths$V9 <- str_after_nth(calc.lengths$V9, "\\;", 1)
 calc.lengths$V9 <- gsub("geneID=", "", calc.lengths$V9)
+#subset the dataframe to gene name and gene length
 calc.lengths <- calc.lengths[,c(9:10)]
+#rename the column
 colnames(calc.lengths)[1] <- "Gene"
 ```
 
-#GO enrichment of DEGs that are HIGHER IN EXPRESSION in Embryos
+#GO enrichment of DEGs that are HIGHER IN EXPRESSION in Larvae
 ```{r}
-
-ALL<-row.names(data) #set the all transcripts list
-DEG <- as.character(row.names(up.EMB.sig.list)) #set the enrichment test list
-IDs <- row.names(data) #set ID names
-LENGTH <-calc.lengths #set length information
+#set the all transcripts list
+ALL<-row.names(data)
+#set the enrichment test list with the expressed filtered genes
+DEG <- as.character(up.LAR.sig.list$Gene) 
+#set ID names
+IDs <- row.names(data) 
+#set length information
+LENGTH <-calc.lengths 
 
 #load GO terms for all genes in the genome
 GO.terms <-Annot[,c(2,13)]
-splitted <- strsplit(as.character(GO.terms$Gene_ontology_IDs), ";") #split into multiple GO ids
-GO.terms <- data.frame(v1 = rep.int(GO.terms$Gene, sapply(splitted, length)), v2 = unlist(splitted)) #list all GOs with each assigned transcript
-GO.terms$v2 <- gsub(" GO:", "GO:",GO.terms$v2) #remove empty spaces before GO
+#split into multiple GO ids
+splitted <- strsplit(as.character(GO.terms$Gene_ontology_IDs), ";") 
+#list all GOs with each assigned gene
+GO.terms <- data.frame(v1 = rep.int(GO.terms$Gene, sapply(splitted, length)), v2 = unlist(splitted)) 
+#remove empty spaces before GO
+GO.terms$v2 <- gsub(" GO:", "GO:",GO.terms$v2) 
 
 #change contig lists to vectors
 ALL.vector <-c(t(ALL))
@@ -368,11 +384,14 @@ DEG.vector <-c(t(DEG))
 ID.vector <- LENGTH$Gene
 LENGTH.vector <-LENGTH$length
 
-gene.vector <-  as.integer(ID.vector%in%DEG.vector) #Construct new vector with 1 for DEG and 0 for others
-names(gene.vector)=ID.vector #set names
-DEG.pwf<-nullp(gene.vector, ID.vector, bias.data=LENGTH.vector) #weight vector by length of gene
+#Construct new vector with 1 for DEG and 0 for others
+gene.vector <-  as.integer(ID.vector%in%DEG.vector) 
+#set names
+names(gene.vector)=ID.vector 
+#weight vector by length of gene
+DEG.pwf<-nullp(gene.vector, ID.vector, bias.data=LENGTH.vector) 
 
-#Find enriched GO terms, "selection-unbiased testing for category enrichment amongst differentially expressed (DE) genes for RNA-seq data"
+#identify enriched GO terms
 GO.wall<-goseq(DEG.pwf, ID.vector, gene2cat=GO.terms, test.cats=c("GO:CC", "GO:BP", "GO:MF"), method="Wallenius", use_genes_without_cat=TRUE)
 
 #How many enriched GO terms do we have
@@ -381,50 +400,59 @@ head(GO.wall)
 tail(GO.wall)
 nrow(GO.wall)
 
-#Find only enriched GO terms that are statistically significant at cutoff 
-enriched.GO.05.a<-GO.wall$category[GO.wall$over_represented_pvalue<.05]
+#Find only enriched GO terms that are statistically significant at chosen cutoff 
+enriched.GO.05.a<-GO.wall$category[GO.wall$over_represented_pvalue<.01]
+#format as dataframe
 enriched.GO.05<-data.frame(enriched.GO.05.a)
+#rename column
 colnames(enriched.GO.05) <- c("category")
-enriched.GO.05 <- merge(enriched.GO.05, GO.wall, by="category")
+#include enrichment information for each category (GO Term)
+enriched.GO.05 <- left_join(enriched.GO.05, GO.wall, by="category")
 
 
-MF.INT <- subset(enriched.GO.05, ontology=="MF")
-EMB.MF.INT <- MF.INT[order(MF.INT$numDEInCat),]
-CC.INT <- subset(enriched.GO.05, ontology=="CC")
-EMB.CC.INT <- CC.INT[order(CC.INT$numDEInCat),]
-BP.INT <- subset(enriched.GO.05, ontology=="BP")
-EMB.BP.INT <- BP.INT[order(BP.INT$numDEInCat),]
-#write.csv(ALL , file = "Output/Transcriptome_GOTerms.csv")
-#write.csv(MF.INT , file = "Output/MF_Sig_Enriched_GO.05.csv")
-#write.csv(CC.INT , file = "Output/CC_Sig_Enriched_GO.05.csv")
-#write.csv(BP.INT , file = "Output/BP_Sig_Enriched_GO.05.csv")
+#subset the Molecular Functions
+LAR.MF.INT <- subset(enriched.GO.05, ontology=="MF")
+#order by the number in category
+LAR.MF.INT <- LAR.MF.INT[order(LAR.MF.INT$numDEInCat),]
+#subset the Cellular Components
+LAR.CC.INT <- subset(enriched.GO.05, ontology=="CC")
+#order by the number in category
+LAR.CC.INT <- LAR.CC.INT[order(LAR.CC.INT$numDEInCat),]
+#subset the Biological Processes
+LAR.BP.INT <- subset(enriched.GO.05, ontology=="BP")
+#order by the number in category
+LAR.BP.INT <- LAR.BP.INT[order(LAR.BP.INT$numDEInCat),]
+write.csv(enriched.GO.05 , file = "output/DEGS_Up_in_Larvae_vs_Emb_Enriched_GOTerms.csv")
 
 ```
 
 #Plotting BP enriched in DEGS up.EMB.sig.list
 ```{r}
 # similarity of GO terms in the DEG list for BP
-simMatrix <- calculateSimMatrix(EMB.BP.INT$category,
+simMatrix <- calculateSimMatrix(LAR.BP.INT$category,
                                 orgdb="org.Hs.eg.db", #human database
                                 ont=c("BP"),
                                 method="Rel")
 
 #scoring sig enriched terms by pvalue
-scores <- setNames(-log(EMB.BP.INT$over_represented_pvalue), EMB.BP.INT$category)
+scores <- setNames(-log(LAR.BP.INT$over_represented_pvalue), LAR.BP.INT$category)
 
 #reducing sig enriched terms to higher order terms and grouping them together by a threshold value
 # and weighting them by scores of pvalue
 #higher thresholds result in fewer groups
-reducedTerms.EMB <- reduceSimMatrix(simMatrix,
+reducedTerms.LAR <- reduceSimMatrix(simMatrix,
                                 scores,
                                 threshold=0.9,
                                 orgdb="org.Hs.eg.db")
-colnames(reducedTerms.EMB)[1] <- "category"
+colnames(reducedTerms.LAR)[1] <- "category"
 
-#pdf("figures/EMB_GO_Enrichment_semsim.pdf", width = 8, height = 8)
-treemapPlot(reducedTerms.EMB)
-#dev.off()
+pdf("figures/DEGS_Up_in_Larvae_vs_Emb_Enriched_GOTerms_semsim.pdf", width = 8, height = 8)
+treemapPlot(reducedTerms.LAR)
+dev.off()
+```
 
+#plot similarity
+```{r}
 #conduct clustering of the similarity matrix
 hc <- hclust(dist(simMatrix))
 
@@ -505,182 +533,5 @@ ggsave("figures/EMB_GO_Enrichment_semsim.png", EMB.GOplots, width = 10, height=1
 
 ```
 
-#GO enrichment of DEGs that are HIGHER IN EXPRESSION IN LARVAE
-```{r}
-
-ALL<-row.names(data) #set the all transcripts list
-DEG <- as.character(row.names(up.LAR.sig.list)) #set the enrichment test list
-IDs <- row.names(data) #set ID names
-LENGTH <-calc.lengths
-
-#load GO terms for all genes in the genome
-GO.terms <-Annot[,c(2,13)]
-splitted <- strsplit(as.character(GO.terms$Gene_ontology_IDs), ";") #split into multiple GO ids
-GO.terms <- data.frame(v1 = rep.int(GO.terms$Gene, sapply(splitted, length)), v2 = unlist(splitted)) #list all GOs with each assigned transcript
-GO.terms$v2 <- gsub(" GO:", "GO:",GO.terms$v2)
-
-#change contig lists to vectors
-ALL.vector <-c(t(ALL))
-DEG.vector <-c(t(DEG))
-ID.vector <- LENGTH$Gene
-LENGTH.vector <-LENGTH$length
-
-gene.vector <-  as.integer(ID.vector%in%DEG.vector) #Construct new vector with 1 for DEG and 0 for others
-names(gene.vector)=ID.vector #set names
-DEG.pwf<-nullp(gene.vector, ID.vector, bias.data=LENGTH.vector) #weight vector by length of gene
-
-#Find enriched GO terms, "selection-unbiased testing for category enrichment amongst differentially expressed (DE) genes for RNA-seq data"
-GO.wall<-goseq(DEG.pwf, ID.vector, gene2cat=GO.terms, test.cats=c("GO:CC", "GO:BP", "GO:MF"), method="Wallenius", use_genes_without_cat=TRUE)
-
-#How many enriched GO terms do we have
-class(GO.wall)
-head(GO.wall)
-tail(GO.wall)
-nrow(GO.wall)
-
-#Find only enriched GO terms that are statistically significant at cutoff 
-enriched.GO.05.a<-GO.wall$category[GO.wall$over_represented_pvalue<.05]
-enriched.GO.05<-data.frame(enriched.GO.05.a)
-colnames(enriched.GO.05) <- c("category")
-enriched.GO.05 <- merge(enriched.GO.05, GO.wall, by="category")
-
-
-MF.INT <- subset(enriched.GO.05, ontology=="MF")
-LAR.MF.INT <- MF.INT[order(MF.INT$numDEInCat),]
-CC.INT <- subset(enriched.GO.05, ontology=="CC")
-LAR.CC.INT <- CC.INT[order(CC.INT$numDEInCat),]
-BP.INT <- subset(enriched.GO.05, ontology=="BP")
-LAR.BP.INT <- BP.INT[order(BP.INT$numDEInCat),]
-#write.csv(ALL , file = "Output/Transcriptome_GOTerms.csv")
-#write.csv(MF.INT , file = "Output/BR.MF_Sig_Enriched_GO.05_INT.csv")
-#write.csv(CC.INT , file = "Output/BR.CC_Sig_Enriched_GO.05_INT.csv")
-#write.csv(BP.INT , file = "Output/BR.BP_Sig_Enriched_GO.05_INT.csv")
-
-```
-
-
-# GO Plotting
-#Plotting BP enriched in DEGS from Larvae 
-```{r}
-
-# similarity of GO terms in the DEG list for BP
-simMatrix <- calculateSimMatrix(LAR.BP.INT$category,
-                                orgdb="org.Hs.eg.db", #human database
-                                ont=c("BP"),
-                                method="Rel")
-
-
-scores <- setNames(-log(LAR.BP.INT$over_represented_pvalue), LAR.BP.INT$category)
-reducedTerms.LAR <- reduceSimMatrix(simMatrix,
-                                scores,
-                                threshold=0.9,
-                                orgdb="org.Hs.eg.db")
-colnames(reducedTerms.LAR)[1] <- "category"
-
-#pdf("figures/LAR_GO_Enrichment_semsim.pdf", width = 8, height = 8)
-Lar.tree <- treemapPlot(reducedTerms.LAR)
-#dev.off()
-
-#conduct clustering of the similarity matrix
-hc <- hclust(dist(simMatrix))
-
-# identify the information for each tip label in the data
-d2 <- data.frame(id=hc$labels,
-                 node=hc$order) #,val=rnorm(30, sd=3))
-colnames(d2)[1] <- "category"
-colnames(reducedTerms.LAR)[1] <- "category"
-d2 <- left_join(d2,reducedTerms.LAR, by="category")
-d2 <- left_join(d2,LAR.BP.INT, by="category")
-
-# Reorder levels of category based on parentTerm
-d2 <- d2 %>% 
-  arrange(parentTerm) %>%
-  mutate(category = factor(category, levels = unique(category)))
-
-#my_colors <- c("pink", "red", "cyan", "blue", "yellow", "orange", "violet", "purple", "brown","tan", "gray")
-
-# Calculate count of each parentTerm
-d2_count <- d2 %>%
-  group_by(parentTerm) %>%
-  summarise(count = n())
-
-# Filter parentTerms with more than n occurrences
-d2_filtered_more <- d2_count %>%
-  filter(count > 9) %>%
-  inner_join(d2, by = "parentTerm")
-
-d2_filtered_less <- d2_count %>%
-  filter(count < 10) %>%
-  inner_join(d2, by = "parentTerm")
-
-#pdf("figures/LAR_GO_Enrichment_semsim.pdf", width = 7, height = 20)
-LARBPGO.more <- d2_filtered_more %>%
-  ggplot(aes(x=category, y=-log10(over_represented_pvalue), colour=parentTerm)) +
-  #ylim(-16,16)+
-  geom_segment(aes(x=category, xend=category, y=0, yend=-log10(over_represented_pvalue), colour = parentTerm),
-               linewidth=1) +
-  geom_point(aes(size=numDEInCat), colour="black")+
-  facet_grid(parentTerm ~ ., scales="free_y", labeller = label_wrap_gen(width = 1, multi_line = TRUE))+
-  #scale_colour_manual(values = my_colors) +  # Set manual colors 
-  coord_flip()+
-  theme_classic() +
-  theme(legend.position = "none",
-        axis.title.y = element_blank(),
-        axis.title.x = element_text(size = 14, face = "bold"),
-        axis.text.x = element_text(size = 10),
-        axis.text.y = element_text(size = 3),
-        plot.title = element_text(size = 40, face = "bold"),
-        strip.text.y = element_text(angle=0, size = 4))
-LARBPGO.more 
-
-LARBPGO.less <- d2_filtered_less %>%
-  ggplot(aes(x=category, y=-log10(over_represented_pvalue), colour=parentTerm)) +
-  #ylim(-16,16)+
-  geom_segment(aes(x=category, xend=category, y=0, yend=-log10(over_represented_pvalue), colour = parentTerm),
-               linewidth=1) +
-  geom_point(aes(size=numDEInCat), colour="black")+
-  facet_grid(parentTerm ~ ., scales="free_y", labeller = label_wrap_gen(width = 1, multi_line = TRUE))+
-  #scale_colour_manual(values = my_colors) +  # Set manual colors 
-  coord_flip()+
-  theme_classic() +
-  theme(legend.position = "none",
-        axis.title.y = element_blank(),
-        axis.title.x = element_text(size = 14, face = "bold"),
-        axis.text.x = element_text(size = 10),
-        axis.text.y = element_text(size = 3),
-        plot.title = element_text(size = 40, face = "bold"),
-        strip.text.y = element_text(angle=0, size = 4))
-LARBPGO.less 
-#dev.off()
-
-LAR.GOplots <- ggarrange(LARBPGO.more, LARBPGO.less, ncol=2)
-ggsave("figures/LAR_GO_Enrichment_semsim.pdf", LAR.GOplots, width = 10, height=16)
-ggsave("figures/LAR_GO_Enrichment_semsim.png", LAR.GOplots, width = 10, height=16)
-
-
-```
-
-# combining plots
-```{r}
-
-#DEG_LFC
-#L31BPGO 
-#L28BPGO
-
-# One plot at the left and two at the right
-pdf("figures/Temperature_DEG_GO.pdf", height=24, width = 22)
-(DEG_LFC)|(L31BPGO / L28BPGO) + plot_layout(heights = c(1.9, 1.1), guides = "collect")
-dev.off()
-
-# stages
-
-pdf("figures/EMB.LAR.GOplots_Enrichment_semsim.pdf", width = 16, height=8)
-treemapPlot(reducedTerms.EMB)
-treemapPlot(reducedTerms.LAR)
-dev.off()
-
-
-
-```
 
 

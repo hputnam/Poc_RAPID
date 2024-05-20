@@ -19,18 +19,20 @@ library("viridis")
 library("ggplot2")
 library("goseq")
 library("strex")
-library("ggpubr")
-library("ggplotify")
-library("EnhancedVolcano")
-library("enrichplot")
+#library("ggpubr")
+#library("ggplotify")
+#library("EnhancedVolcano")
+#library("enrichplot")
 library("rrvgo")
 library("ggtree")
 library("tidytree")
 library(clusterProfiler)
 library(org.Hs.eg.db)
 library(GOSemSim)
-library(DOSE)
+#library(DOSE)
 library(patchwork)
+library(ggraph)
+library(igraph)
 
 ```
 
@@ -38,31 +40,32 @@ library(patchwork)
 ```{r}
 #read in metadata
 sample_ColData <- read.csv("data/Tagseq_zymo_genohub/Pverr_larvae_Seq_Sample_Info.csv", header=TRUE, sep=",")
-print(sample_ColData)
+#generate a grouping variable
 sample_ColData$group <- paste0(sample_ColData$Stage,"_",sample_ColData$Temperature)
 
 #Read in data
 TranscriptCountData <- as.data.frame(read.csv(file= "data/Tagseq_zymo_genohub/Pverr_larvae_gene_count_matrix.csv", sep=",", header = TRUE))
 head(TranscriptCountData)
-
+#assign the first row of gene names as rownames
 rownames(TranscriptCountData) <- TranscriptCountData[,1]
+#remove gene names so only numeric counts data are in dataset
 TranscriptCountData <- TranscriptCountData[,-1]
+#view data
 head(TranscriptCountData)
 ```
 
 #Functional Annotation
-
 ```{r}
-# Functional Annotation
-Annot <- readxl::read_xlsx("data/Tagseq_zymo_genohub/FileS2_Pver_gene_annot_May28.xlsx", skip=4) #read in data file
-
+#read in data file
+Annot <- readxl::read_xlsx("data/Tagseq_zymo_genohub/FileS2_Pver_gene_annot_May28.xlsx", skip=4) 
 ```
 
-#filtering values for PoverA
+#filtering expression values for selected data set and for PoverA
 ```{r}
 
-#filter to larval stage
+#filter data to embryo stage
 TranscriptCountData <- TranscriptCountData[,c(1:4)]
+#filter sample metadata to embryo stage
 sample_ColData <- sample_ColData[c(1:4),]
 
 #set filter values for PoverA, P percent of the samples have counts over A
@@ -79,25 +82,27 @@ gn.keep <- rownames(keep)
 
 #data filtered in PoverA, P percent of the samples have counts over A
 filt.count.mat <- as.matrix(TranscriptCountData[which(rownames(TranscriptCountData) %in% gn.keep),])
+#view filtered data
 head(filt.count.mat)
 ```
 
-#check count matrix sample name order (column order) and sample metadata order matches
+#check that count matrix sample name order and sample metadata order match
 ```{r}
 #assign tube ids as rownames in metadata
 rownames(sample_ColData) <- sample_ColData$Tube_ID
 
-rownames(sample_ColData)
+#view sample names in data
 colnames(filt.count.mat) 
+#view sample names in metadata
+rownames(sample_ColData)
 
 # Check all sample IDs in sample_ColData are also in TranscriptCountData and match their orders
 all(rownames(sample_ColData) %in% colnames(filt.count.mat))  #Should return TRUE
-# returns TRUE
-all(rownames(sample_ColData) == colnames(filt.count.mat))    # should return TRUE
-#returns TRUE
+all(rownames(sample_ColData) == colnames(filt.count.mat))    #Should return TRUE
 
 #identify the treatment column levels
 sample_ColData$group <- factor(sample_ColData$group)
+#view levels
 levels(sample_ColData$group)
 
 ```
@@ -107,15 +112,15 @@ levels(sample_ColData$group)
 #### Construct DESeq dataset from matrix
 data <- DESeqDataSetFromMatrix(countData = filt.count.mat, colData = sample_ColData, design = ~ 1) #create a DESeqDataSet object
 
-
 #apply a regularized log transformation to minimize effects of small counts and normalize wrt library size
 rld <- rlog(data, blind=FALSE)
-head(assay(rld), 3) #view data
+ #view data
+head(assay(rld), 3)
 
-#calculate distance matix
+#calculate distance between samples
 sampleDists <- dist(t(assay(rld)))
 
-#distance matrix
+#set as distance matrix
 sampleDistMatrix <- as.matrix(sampleDists)
 
 #assign col names
@@ -140,50 +145,74 @@ plotPCA(rld, intgroup = c("group")) #plot PCA of samples with all data
 # Gene Expression Analysis
 ```{r}
 #Identify genes that are expressed 
-#proportion of the genome expressed in the embryo stage
+
 #genes in genome  27,439 
-#genes in our input dataset
+
+#Identify number of genes that are expressed in the filtered dataset
 genes.expressed <- nrow(filt.count.mat)
-  
+
+#Identify number of genes that are expressed in the entire dataset  
 genes.counted <-nrow(TranscriptCountData)
 
+#proportion of the geneset expressed in the embryo stage
 genes.expressed/genes.counted
 
-
-#add annotation data
+#add annotation data to filtered counts
 EGs <- as.data.frame(filt.count.mat)
+#set gene names as row names
 EGs$Gene <- rownames(EGs)
+#join the data
 EG.Annot <- left_join(EGs,Annot,  by="Gene")
+#separate short hit name from long name
 EG.Annot <- EG.Annot %>% separate(Hit_description, into = c("Hit_description1", "Hit_description2"),
           sep = "\\(|\\)")
+
+# count unannotated genes in fiiltered list
+unannot <- sum(is.na(EG.Annot$Hit_accession))
+
+# proportion of the analyzed genes with annotation
+1-unannot/genes.expressed
 
 ```
 
 # GO ENRICHMENT
 # Gene Length
 ```{r}
+#read in the genome gff file
 calc.lengths <- read.table("data/Tagseq_zymo_genohub/Pver_genome_assembly_v1.0_fixed.gff3", header=F)
+#filter to the mRNA
 calc.lengths <- calc.lengths %>% filter(V3=="mRNA")
+#calculate the length from the stop and start values
 calc.lengths$length <- calc.lengths$V5 - calc.lengths$V4
+#trim the IDs to the gene name only
 calc.lengths$V9 <- str_after_nth(calc.lengths$V9, "\\;", 1)
 calc.lengths$V9 <- gsub("geneID=", "", calc.lengths$V9)
+#subset the dataframe to gene name and gene length
 calc.lengths <- calc.lengths[,c(9:10)]
+#rename the column
 colnames(calc.lengths)[1] <- "Gene"
 ```
 
-#GO enrichment of DEGs that are HIGHER IN EXPRESSION in Embryos
+#GO enrichment of DEGs that are expressed in the filtered Embryos dataset
 ```{r}
 
-ALL<-row.names(data) #set the all transcripts list
-DEG <- as.character(EGs$Gene) #set the enrichment test list
-IDs <- row.names(data) #set ID names
-LENGTH <-calc.lengths #set length information
+#set the all transcripts list
+ALL<-row.names(data)
+#set the enrichment test list with the expressed fitered genes
+DEG <- as.character(EGs$Gene) 
+#set ID names
+IDs <- row.names(data) 
+#set length information
+LENGTH <-calc.lengths 
 
 #load GO terms for all genes in the genome
 GO.terms <-Annot[,c(2,13)]
-splitted <- strsplit(as.character(GO.terms$Gene_ontology_IDs), ";") #split into multiple GO ids
-GO.terms <- data.frame(v1 = rep.int(GO.terms$Gene, sapply(splitted, length)), v2 = unlist(splitted)) #list all GOs with each assigned transcript
-GO.terms$v2 <- gsub(" GO:", "GO:",GO.terms$v2) #remove empty spaces before GO
+#split into multiple GO ids
+splitted <- strsplit(as.character(GO.terms$Gene_ontology_IDs), ";") 
+#list all GOs with each assigned gene
+GO.terms <- data.frame(v1 = rep.int(GO.terms$Gene, sapply(splitted, length)), v2 = unlist(splitted)) 
+#remove empty spaces before GO
+GO.terms$v2 <- gsub(" GO:", "GO:",GO.terms$v2) 
 
 #change contig lists to vectors
 ALL.vector <-c(t(ALL))
@@ -191,42 +220,50 @@ DEG.vector <-c(t(DEG))
 ID.vector <- LENGTH$Gene
 LENGTH.vector <-LENGTH$length
 
-gene.vector <-  as.integer(ID.vector%in%DEG.vector) #Construct new vector with 1 for DEG and 0 for others
-names(gene.vector)=ID.vector #set names
-DEG.pwf<-nullp(gene.vector, ID.vector, bias.data=LENGTH.vector) #weight vector by length of gene
+#Construct new vector with 1 for DEG and 0 for others
+gene.vector <-  as.integer(ID.vector%in%DEG.vector) 
+#set names
+names(gene.vector)=ID.vector 
+#weight vector by length of gene
+DEG.pwf<-nullp(gene.vector, ID.vector, bias.data=LENGTH.vector) 
 
-#Find enriched GO terms, "selection-unbiased testing for category enrichment amongst differentially expressed (DE) genes for RNA-seq data"
+#identify enriched GO terms
 GO.wall<-goseq(DEG.pwf, ID.vector, gene2cat=GO.terms, test.cats=c("GO:CC", "GO:BP", "GO:MF"), method="Wallenius", use_genes_without_cat=TRUE)
 
-#How many enriched GO terms do we have
+#View and count enriched GO terms do we have
 class(GO.wall)
 head(GO.wall)
 tail(GO.wall)
 nrow(GO.wall)
 
-#Find only enriched GO terms that are statistically significant at cutoff 
-enriched.GO.05.a<-GO.wall$category[GO.wall$over_represented_pvalue<.05]
+#Find only enriched GO terms that are statistically significant at chosen cutoff 
+enriched.GO.05.a<-GO.wall$category[GO.wall$over_represented_pvalue<.01]
+#format as dataframe
 enriched.GO.05<-data.frame(enriched.GO.05.a)
+#rename column
 colnames(enriched.GO.05) <- c("category")
-enriched.GO.05 <- merge(enriched.GO.05, GO.wall, by="category")
+#include enrichment information for each category (GO Term)
+enriched.GO.05 <- left_join(enriched.GO.05, GO.wall, by="category")
 
-
-MF.INT <- subset(enriched.GO.05, ontology=="MF")
-EMB.MF.INT <- MF.INT[order(MF.INT$numDEInCat),]
-CC.INT <- subset(enriched.GO.05, ontology=="CC")
-EMB.CC.INT <- CC.INT[order(CC.INT$numDEInCat),]
-BP.INT <- subset(enriched.GO.05, ontology=="BP")
-EMB.BP.INT <- BP.INT[order(BP.INT$numDEInCat),]
-#write.csv(ALL , file = "Output/Transcriptome_GOTerms.csv")
-#write.csv(MF.INT , file = "Output/MF_Sig_Enriched_GO.05.csv")
-#write.csv(CC.INT , file = "Output/CC_Sig_Enriched_GO.05.csv")
-#write.csv(BP.INT , file = "Output/BP_Sig_Enriched_GO.05.csv")
+#subset the Molecular Functions
+EMB.MF.INT <- subset(enriched.GO.05, ontology=="MF")
+#order by the number in category
+EMB.MF.INT <- EMB.MF.INT[order(EMB.MF.INT$numDEInCat),]
+#subset the Cellular Components
+EMB.CC.INT <- subset(enriched.GO.05, ontology=="CC")
+#order by the number in category
+EMB.CC.INT <- EMB.CC.INT[order(EMB.CC.INT$numDEInCat),]
+#subset the Biological Processes
+EMB.BP.INT <- subset(enriched.GO.05, ontology=="BP")
+#order by the number in category
+EMB.BP.INT <- EMB.BP.INT[order(EMB.BP.INT$numDEInCat),]
+write.csv(enriched.GO.05 , file = "output/Embryo_28_Enriched_GOTerms.csv")
 
 ```
 
-#Plotting BP enriched in genes expressed at the embryo stage
+#Plotting BP GO enrichment in filtered geneset expressed at the embryo stage
 ```{r}
-# similarity of GO terms in the DEG list for BP
+#calculate the similarity of GO terms in the expressed list for BP
 simMatrix <- calculateSimMatrix(EMB.BP.INT$category,
                                 orgdb="org.Hs.eg.db", #human database
                                 ont=c("BP"),
@@ -235,7 +272,7 @@ simMatrix <- calculateSimMatrix(EMB.BP.INT$category,
 #scoring sig enriched terms by pvalue
 scores <- setNames(-log(EMB.BP.INT$over_represented_pvalue), EMB.BP.INT$category)
 
-#reducing sig enriched terms to higher order terms and grouping them together by a threshold value
+#reducing sig enriched terms to higher order parent terms and grouping them together by a threshold value
 # and weighting them by scores of pvalue
 #higher thresholds result in fewer groups
 reducedTerms.EMB <- reduceSimMatrix(simMatrix,
@@ -244,10 +281,55 @@ reducedTerms.EMB <- reduceSimMatrix(simMatrix,
                                 orgdb="org.Hs.eg.db")
 colnames(reducedTerms.EMB)[1] <- "category"
 
-pdf("figures/embryo_expression.pdf", width = 8, height = 16)
+#calculate the number of unique parent terms
+length(unique(reducedTerms.EMB$parentTerm))
+#list the unique parent terms
+unique(reducedTerms.EMB$parentTerm)
+
+#plot GO terms under their parent terms
+pdf("figures/BP_embryo_expression.pdf", width = 16, height = 8)
 treemapPlot(reducedTerms.EMB)
 dev.off()
 
+
+```
+
+```{r}
+
+reducedTerms.EMB <- left_join(reducedTerms.EMB, EMB.BP.INT, by="category")
+
+
+#identify the links between terms
+edges <- reducedTerms.EMB[,c(8,7)]
+vertices <- reducedTerms.EMB[,c(7,6,8)]
+#generate a graph object
+mygraph <- graph_from_data_frame(edges, vertices=vertices)
+
+pdf("figures/circle_BP_embryo_expression.pdf", width = 16, height = 8)
+ggraph(mygraph, layout = 'circlepack') + 
+  geom_node_circle(aes(fill = parentTerm)) +
+  theme_void()
+dev.off()
+
+pdf("figures/2circle_BP_embryo_expression.pdf", width = 16, height = 8)
+ggraph(mygraph, layout = 'partition', circular = TRUE) +
+  geom_node_arc_bar(aes(fill = parentTerm)) +
+  coord_fixed()
+dev.off()
+
+
+pdf("figures/square_BP_embryo_expression.pdf", width = 16, height = 8)
+ggraph(mygraph, layout = 'treemap') + 
+  geom_node_tile(aes(fill = parentTerm))
+  #geom_tile_text(aes(label = parentTerm, size = 3)) 
+dev.off()
+
+
+```
+
+
+# Plot grouped terms
+```{r}
 #conduct clustering of the similarity matrix
 hc <- hclust(dist(simMatrix))
 
