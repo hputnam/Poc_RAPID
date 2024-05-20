@@ -547,7 +547,7 @@ tail(GO.wall)
 nrow(GO.wall)
 
 #Find only enriched GO terms that are statistically significant at cutoff 
-enriched.GO.05.a<-GO.wall$category[GO.wall$over_represented_pvalue<.05]
+enriched.GO.05.a<-GO.wall$category[GO.wall$over_represented_pvalue<.01]
 enriched.GO.05<-data.frame(enriched.GO.05.a)
 colnames(enriched.GO.05) <- c("category")
 enriched.GO.05 <- merge(enriched.GO.05, GO.wall, by="category")
@@ -634,9 +634,18 @@ dev.off()
 #L31BPGO 
 #L28BPGO
 
-# One plot at the left and two at the right
-pdf("figures/Temperature_DEG_GO.pdf", height=24, width = 22)
-(DEG_LFC)|(L31BPGO / L28BPGO) + plot_layout(heights = c(1.9, 1.1), guides = "collect")
+# # One plot at the left and two at the right
+# pdf("figures/Temperature_DEG_GO_31.pdf", height=24, width = 22)
+# (DEG_LFC)|(L31BPGO / L28BPGO) + plot_layout(heights = c(1.9, 1.1), guides = "collect")
+# dev.off()
+
+
+pdf("figures/Temperature_DEG_GO_31.pdf", height=12, width = 16)
+(DEG_LFC_31)|(L31BPGO) + plot_layout(guides = "collect")
+dev.off()
+
+pdf("figures/Temperature_DEG_GO_28.pdf", height=12, width = 16)
+(DEG_LFC_28)|(L28BPGO) + plot_layout(guides = "collect")
 dev.off()
 
 ```
