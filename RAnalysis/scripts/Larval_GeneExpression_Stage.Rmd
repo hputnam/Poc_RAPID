@@ -5,11 +5,10 @@ date: "4/24/2024"
 output: html_document
 ---
 
-Install and Load Packages
+# Install and Load Packages
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
-#library("tidyr")
 library("tidyverse")
 library("DESeq2")
 library("genefilter")
@@ -26,11 +25,10 @@ library("enrichplot")
 library("rrvgo")
 library("ggtree")
 library("tidytree")
-library(clusterProfiler)
-library(org.Hs.eg.db)
-library(GOSemSim)
-library(DOSE)
-library(patchwork)
+library("clusterProfiler")
+library("org.Hs.eg.db")
+library("GOSemSim")
+library("patchwork")
 
 ```
 
@@ -38,24 +36,29 @@ library(patchwork)
 ```{r}
 #read in metadata
 sample_ColData <- read.csv("data/Tagseq_zymo_genohub/Pverr_larvae_Seq_Sample_Info.csv", header=TRUE, sep=",")
+
 #generate a grouping variable
 sample_ColData$group <- paste0(sample_ColData$Stage,"_",sample_ColData$Temperature)
 
 #Read in data
 TranscriptCountData <- as.data.frame(read.csv(file= "data/Tagseq_zymo_genohub/Pverr_larvae_gene_count_matrix.csv", sep=",", header = TRUE))
+
+#view data
 head(TranscriptCountData)
+
 #assign the first row of gene names as rownames
 rownames(TranscriptCountData) <- TranscriptCountData[,1]
+
 #remove gene names so only numeric counts data are in dataset
 TranscriptCountData <- TranscriptCountData[,-1]
+
 #view data
 head(TranscriptCountData)
 ```
 
 #Functional Annotation
-
 ```{r}
-# Functional Annotation
+# Read in Functional Annotation
 Annot <- readxl::read_xlsx("data/Tagseq_zymo_genohub/FileS2_Pver_gene_annot_May28.xlsx", skip=4) #read in data file
 
 ```
@@ -63,9 +66,10 @@ Annot <- readxl::read_xlsx("data/Tagseq_zymo_genohub/FileS2_Pver_gene_annot_May2
 #filtering values for PoverA
 ```{r}
 
-#filter data to embryo and larval stage at 28°
+#filter data to embryo and larval stages at 28°
 TranscriptCountData <- TranscriptCountData[,c(1:5,7,9,11)]
-#filter sample metadata to embryo and larval stage at 28°
+
+#filter sample metadata to embryo and larval stages at 28°
 sample_ColData <- sample_ColData[c(1:5,7,9,11),]
 
 #set filter values for PoverA, P percent of the samples have counts over A
@@ -82,6 +86,8 @@ gn.keep <- rownames(keep)
 
 #data filtered in PoverA, P percent of the samples have counts over A
 filt.count.mat <- as.matrix(TranscriptCountData[which(rownames(TranscriptCountData) %in% gn.keep),])
+
+#view data
 head(filt.count.mat)
 ```
 
@@ -92,6 +98,7 @@ rownames(sample_ColData) <- sample_ColData$Tube_ID
 
 #view sample names in data
 colnames(filt.count.mat) 
+
 #view sample names in metadata
 rownames(sample_ColData)
 
@@ -101,20 +108,22 @@ all(rownames(sample_ColData) == colnames(filt.count.mat))    #Should return TRUE
 
 #identify the treatment column levels
 sample_ColData$group <- factor(sample_ColData$group)
+
 #view levels
 levels(sample_ColData$group)
 
 ```
 
-
+# Contruct expression object
 ```{r}
 #### Construct DESeq dataset from matrix
 data <- DESeqDataSetFromMatrix(countData = filt.count.mat, colData = sample_ColData, design = ~ group) #create a DESeqDataSet object
 
-
 #apply a regularized log transformation to minimize effects of small counts and normalize wrt library size
 rld <- rlog(data, blind=FALSE)
-head(assay(rld), 3) #view data
+
+#view data
+head(assay(rld), 3)
 
 #calculate distance matix
 sampleDists <- dist(t(assay(rld)))
@@ -182,7 +191,7 @@ sig <- subset(DEG.int.res, padj<0.05,)
 sig.list <- data[which(rownames(data) %in% rownames(sig)),]
 
 #save DEG list
-write.csv(counts(sig.list), file="Output/DEG_05FDR.Stage.csv")
+write.csv(counts(sig.list), file="output/DEG_05FDR.Stage.28.csv")
 
 #save DEG df
 res_df <- as.data.frame(DEG.int.res)
@@ -192,9 +201,9 @@ res_df <- res_df %>%
 #subset upregulated in Embryos
 up.EMB.sig <- res_df %>% 
   subset(padj<0.05) %>%
-  subset(log2FoldChange<0) #negative values are higher in the Forereef
+  subset(log2FoldChange<0) 
 
-#Sanity check on expression direction. Backreef should be on average higher than Forereef
+#Sanity check on expression direction 
 plotCounts(DEG.int, gene=rownames(up.EMB.sig)[1], intgroup="group") 
 
 #subset list of sig transcripts from original count data
@@ -205,12 +214,12 @@ up.EMB.sig.list <- as.data.frame(counts(up.EMB.sig.list))
 up.EMB.sig.list$Gene <- rownames(up.EMB.sig.list)
 up.EMB.sig.list.annot <- left_join(up.EMB.sig.list, Annot,  by="Gene")
 
-#subset upregulated at Larvae
+#subset upregulated at Larval stage
 up.LAR.sig <- res_df %>% 
   subset(padj<0.05) %>%
-  subset(log2FoldChange>0) #negative values are higher in the Forereef
+  subset(log2FoldChange>0) 
 
-#Sanity check on expression direction. Backreef should be on average higher than Forereef
+#Sanity check on expression direction. 
 plotCounts(DEG.int, gene=rownames(up.LAR.sig)[1], intgroup="group") 
 
 #subset list of sig transcripts from original count data
@@ -228,37 +237,40 @@ up.LAR.sig.list.annot <- left_join(up.LAR.sig.list, Annot,  by="Gene")
 ```{r}
 #### Plotting DEG PCA
 
-# set site colors
+# set group colors
 cols <- c("Embryo_28" = "coral","Larvae_28" = "lightblue")
 
+# rlog transform data
 rsig <- rlog(sig.list, blind=FALSE)
 
-PCA.plot.auto <- plotPCA(rsig, intgroup = c("group")) #Plot PCA of all samples for DEG only
-PCA.plot.auto #view plot
+#Plot PCA of all samples for DEG only
+PCA.plot.auto <- plotPCA(rsig, intgroup = c("group"))
+#view plot
+PCA.plot.auto 
 
-PC.info <-PCA.plot.auto$data #extract plotting data
+#extract plotting data
+PC.info <-PCA.plot.auto$data 
 
 #plot PCA results
-pdf(file="figures/Pverr_larvae_stage_PCA.DEG.pdf")
+#pdf(file="figures/Pverr_larvae_stage_PCA.DEG.pdf")
 PCA.plot <- PC.info %>%
 ggplot(aes(x=PC1, y=PC2,color=group), group=group)+
   geom_point(size=3)+
   scale_color_manual(values=cols)+
-  #ylim(-15,15)+
-  #xlim(-35,35)+
   xlab(paste0(PCA.plot.auto$labels$x[1]))+
   ylab(paste0(PCA.plot.auto$labels$y[1]))+
   theme_bw()+
-  theme(legend.position = c(0.8, 0.8),
+  theme(legend.position = c(0.8, 0.4),
          text = element_text(size=15))
 PCA.plot 
-dev.off()
+#dev.off()
 
 ```
 #### Plotting DEG heatmap
 ```{r}
 #### Plotting DEG heatmap
 
+# set group colors
 ann_colors = list(
   group = c("Embryo_28" = "coral","Larvae_28" = "lightblue"))
 
@@ -268,44 +280,49 @@ mat <- assay(rsig)#
 #make dataframe
 df <- data.frame(colData(rsig)[c("group")])
 
-pheatmap(mat, color=inferno(10), annotation_col = df, clustering_method = "average", scale="row",
-                clustering_distance_rows="euclidean", show_rownames =F, cluster_cols=T,
-                show_colnames =F, gaps_col = c(5)) #plot heatmap of all DEG by group
-
-
-#plot heatmap by site
-pdf("output/Pverr_larvae_Stage_DEG_heatmap_relative.pdf")
+#plot heatmap by stage
+#pdf("output/Pverr_larvae_Stage_DEG_heatmap_relative.pdf")
 Hmap <- pheatmap(mat, color=inferno(10), annotation_col = df, annotation_colors = ann_colors, clustering_method = "average", scale="row",  clustering_distance_rows="euclidean", show_rownames =F, fontsize_row=8, cluster_cols=T, show_colnames =F, gaps_col = c(5)) #plot heatmap of all DEG by group
 Hmap 
-dev.off()
+#dev.off()
 
 ```
 #Plotting PCA and Heatmap together
 ```{r}
+#arrange plots
 DEplots <- ggarrange(PCA.plot, as.grob(Hmap), ncol=2, labels = c("A)","B)"))
+#save file
 ggsave("figures/Pverr_larvae_DEplots_Stage.pdf", DEplots, width = 16, height=8)
 ggsave("figures/Pverr_larvae_DEplots_Stage.png", DEplots, width = 16, height=8)
-
 
 ```
 
 
 #Adding Annotation to DEGs
 ```{r}
+#identify DEGs
 DEGs <- res_df
+#set gene name as rowname
 DEGs$Gene <- rownames(DEGs)
+#join counts and annotation
 Output <- left_join(DEGs,Annot,  by="Gene")
+#save file of annotated DEGs
 write.csv(Output,"output/Annotated_DEGS.csv")
 
+#separate short hit name from long name
 Output <- Output %>% separate(Hit_description, into = c("Hit_description1", "Hit_description2"),
           sep = "\\(|\\)")
 
+#make a label name of hit name and gene ID
 Output$label <- paste0(Output$Hit_description1, " (", Output$Gene, ")")
+
+#remove the gene ID Pver_gene_ to leave the gene number
 Output$label <- gsub("Pver_gene_", "", Output$label)
 
+#set the order of factors for labels
 Output$label <- factor(Output$label, levels = Output$label[order(Output$log2FoldChange)])
 
-
+#make a data frame for annotation
 data2.labels <- data.frame(
   x = c(14, 11),
   y = c(6, -6),
@@ -313,17 +330,14 @@ data2.labels <- data.frame(
   text.lab = c("Higher in Embryos", "Higher in Larvae")
   )
 
-pdf("figures/DEG_LFC_Larvae_Stage.pdf", height = 12, width = 24)
+#plot fold change higher in larvae and higher in embryos
+#pdf("figures/DEG_LFC_Larvae_Stage.pdf", height = 12, width = 24)
 DEG_LFC <- Output %>% arrange(log2FoldChange) %>%
   ggplot(aes(x=label, y=log2FoldChange, colour=padj)) +
   #ylim(-10,10)+
   geom_point(size=2)+
   scale_colour_gradientn(colours = colorspace::heat_hcl(7))+
   geom_segment(aes(x=label, xend=label, y=0, yend=log2FoldChange),linewidth=1) +
-  #geom_vline(xintercept = 12 + 0.5, linetype = "dashed") + # Add vertical line
-  #geom_text(data = data2.labels, aes(x = x, y = y, label = text.lab), color="black",size=8)+
-  #geom_text(data = data.GOBP.labels, aes(x = x, y = y, label = text.lab), color="black",size=2.8)+
-  #geom_text(data = data.GOMF.labels, aes(x = x, y = y, label = text.lab), color="blue",size=2.8)+
   coord_flip()+
   theme_classic() +
   theme(legend.position = c(0.8, 0.1),
@@ -331,29 +345,29 @@ DEG_LFC <- Output %>% arrange(log2FoldChange) %>%
         axis.title.x = element_text(size = 14, face = "bold"),
         plot.title = element_text(size = 40, face = "bold"))+
   ggtitle('A')
-DEG_LFC
+#DEG_LFC
 dev.off()
 
-
-
-
-
 ```
-
 # GO ENRICHMENT
-# Gene Length
+# calculate Gene Length
 ```{r}
 #read in the genome gff file
 calc.lengths <- read.table("data/Tagseq_zymo_genohub/Pver_genome_assembly_v1.0_fixed.gff3", header=F)
+
 #filter to the mRNA
 calc.lengths <- calc.lengths %>% filter(V3=="mRNA")
+
 #calculate the length from the stop and start values
 calc.lengths$length <- calc.lengths$V5 - calc.lengths$V4
+
 #trim the IDs to the gene name only
 calc.lengths$V9 <- str_after_nth(calc.lengths$V9, "\\;", 1)
 calc.lengths$V9 <- gsub("geneID=", "", calc.lengths$V9)
+
 #subset the dataframe to gene name and gene length
 calc.lengths <- calc.lengths[,c(9:10)]
+
 #rename the column
 colnames(calc.lengths)[1] <- "Gene"
 ```
@@ -362,19 +376,25 @@ colnames(calc.lengths)[1] <- "Gene"
 ```{r}
 #set the all transcripts list
 ALL<-row.names(data)
+
 #set the enrichment test list with the expressed filtered genes
 DEG <- as.character(up.LAR.sig.list$Gene) 
+
 #set ID names
 IDs <- row.names(data) 
+
 #set length information
 LENGTH <-calc.lengths 
 
 #load GO terms for all genes in the genome
 GO.terms <-Annot[,c(2,13)]
+
 #split into multiple GO ids
 splitted <- strsplit(as.character(GO.terms$Gene_ontology_IDs), ";") 
+
 #list all GOs with each assigned gene
 GO.terms <- data.frame(v1 = rep.int(GO.terms$Gene, sapply(splitted, length)), v2 = unlist(splitted)) 
+
 #remove empty spaces before GO
 GO.terms$v2 <- gsub(" GO:", "GO:",GO.terms$v2) 
 
@@ -386,8 +406,10 @@ LENGTH.vector <-LENGTH$length
 
 #Construct new vector with 1 for DEG and 0 for others
 gene.vector <-  as.integer(ID.vector%in%DEG.vector) 
+
 #set names
 names(gene.vector)=ID.vector 
+
 #weight vector by length of gene
 DEG.pwf<-nullp(gene.vector, ID.vector, bias.data=LENGTH.vector) 
 
@@ -402,10 +424,13 @@ nrow(GO.wall)
 
 #Find only enriched GO terms that are statistically significant at chosen cutoff 
 enriched.GO.05.a<-GO.wall$category[GO.wall$over_represented_pvalue<.01]
+
 #format as dataframe
 enriched.GO.05<-data.frame(enriched.GO.05.a)
+
 #rename column
 colnames(enriched.GO.05) <- c("category")
+
 #include enrichment information for each category (GO Term)
 enriched.GO.05 <- left_join(enriched.GO.05, GO.wall, by="category")
 
@@ -440,98 +465,37 @@ scores <- setNames(-log(LAR.BP.INT$over_represented_pvalue), LAR.BP.INT$category
 #reducing sig enriched terms to higher order terms and grouping them together by a threshold value
 # and weighting them by scores of pvalue
 #higher thresholds result in fewer groups
-reducedTerms.LAR <- reduceSimMatrix(simMatrix,
+reducedTerms.BP.LAR <- reduceSimMatrix(simMatrix,
                                 scores,
                                 threshold=0.9,
                                 orgdb="org.Hs.eg.db")
-colnames(reducedTerms.LAR)[1] <- "category"
+colnames(reducedTerms.BP.LAR)[1] <- "category"
 
-pdf("figures/DEGS_Up_in_Larvae_vs_Emb_Enriched_GOTerms_semsim.pdf", width = 8, height = 8)
-treemapPlot(reducedTerms.LAR)
+pdf("figures/BP_DEGS_Up_in_Larvae_vs_Emb_Enriched_GOTerms_semsim.pdf", width = 18, height = 8)
+treemapPlot(reducedTerms.BP.LAR, force.print.labels=T)
 dev.off()
 ```
-
-#plot similarity
+#Plotting MF enriched in DEGS up.EMB.sig.list
 ```{r}
-#conduct clustering of the similarity matrix
-hc <- hclust(dist(simMatrix))
+# similarity of GO terms in the DEG list for BP
+simMatrix <- calculateSimMatrix(LAR.MF.INT$category,
+                                orgdb="org.Hs.eg.db", #human database
+                                ont=c("MF"),
+                                method="Rel")
 
-# identify the information for each tip label in the data
-d1 <- data.frame(id=hc$labels,
-                 node=hc$order) #,val=rnorm(30, sd=3))
-colnames(d1)[1] <- "category"
-colnames(reducedTerms.EMB)[1] <- "category"
-d1 <- left_join(d1,reducedTerms.EMB, by="category")
-d1 <- left_join(d1,EMB.BP.INT, by="category")
+#scoring sig enriched terms by pvalue
+scores <- setNames(-log(LAR.MF.INT$over_represented_pvalue), LAR.MF.INT$category)
 
-# Reorder levels of category based on parentTerm
-d1 <- d1 %>% 
-  arrange(parentTerm) %>%
-  mutate(category = factor(category, levels = unique(category)))
+#reducing sig enriched terms to higher order terms and grouping them together by a threshold value
+# and weighting them by scores of pvalue
+#higher thresholds result in fewer groups
+reducedTerms.MF.LAR <- reduceSimMatrix(simMatrix,
+                                scores,
+                                threshold=0.9,
+                                orgdb="org.Hs.eg.db")
+colnames(reducedTerms.MF.LAR)[1] <- "category"
 
-#my_colors <- c("pink", "red", "cyan", "blue", "yellow", "orange", "violet", "purple", "brown","tan", "gray")
-
-# Calculate count of each parentTerm
-d1_count <- d1 %>%
-  group_by(parentTerm) %>%
-  summarise(count = n())
-
-# Filter parentTerms with more than n occurrences
-d1_filtered_more <- d1_count %>%
-  filter(count > 9) %>%
-  inner_join(d1, by = "parentTerm")
-
-d1_filtered_less <- d1_count %>%
-  filter(count < 10) %>%
-  inner_join(d1, by = "parentTerm")
-
-#pdf("figures/EMB_GO_Enrichment_semsim.pdf", width = 8, height = 24)
-EMB.BPGO.more <- d1_filtered_more %>%
-  ggplot(aes(x=category, y=-log10(over_represented_pvalue), colour=parentTerm)) +
-  #ylim(-16,16)+
-  geom_segment(aes(x=category, xend=category, y=0, yend=-log10(over_represented_pvalue), colour = parentTerm),
-               linewidth=1) +
-  geom_point(aes(size=numDEInCat), colour="black")+
-  facet_grid(parentTerm ~ ., scales="free_y", labeller = label_wrap_gen(width = 2, multi_line = TRUE))+
-  scale_colour_discrete() + 
-  coord_flip()+
-  theme_classic() +
-  theme(legend.position = "none",
-        axis.title.y = element_blank(),
-        axis.title.x = element_text(size = 14, face = "bold"),
-        axis.text.x = element_text(size = 4),
-        axis.text.y = element_text(size = 4),
-        plot.title = element_text(size = 40, face = "bold"))+
-  ggtitle('B')
-EMB.BPGO.more
-#dev.off()
-
-EMB.BPGO.less <- d1_filtered_less %>%
-  ggplot(aes(x=category, y=-log10(over_represented_pvalue), colour=parentTerm)) +
-  #ylim(-16,16)+
-  geom_segment(aes(x=category, xend=category, y=0, yend=-log10(over_represented_pvalue), colour = parentTerm),
-               linewidth=1) +
-  geom_point(aes(size=numDEInCat), colour="black")+
-  facet_grid(parentTerm ~ ., scales="free_y", labeller = label_wrap_gen(width = 2, multi_line = TRUE))+
-  scale_colour_discrete() + 
-  coord_flip()+
-  theme_classic() +
-  theme(legend.position = "none",
-        axis.title.y = element_blank(),
-        axis.title.x = element_text(size = 14, face = "bold"),
-        axis.text.x = element_text(size = 4),
-        axis.text.y = element_text(size = 4),
-        plot.title = element_text(size = 40, face = "bold"))+
-  ggtitle('B')
-EMB.BPGO.less
-#dev.off()
-
-EMB.GOplots <- ggarrange(EMB.BPGO.more, EMB.BPGO.less, ncol=2)
-ggsave("figures/EMB_GO_Enrichment_semsim.pdf", EMB.GOplots, width = 10, height=16)
-ggsave("figures/EMB_GO_Enrichment_semsim.png", EMB.GOplots, width = 10, height=16)
-
-
+pdf("figures/MF_DEGS_Up_in_Larvae_vs_Emb_Enriched_GOTerms_semsim.pdf", width = 18, height = 8)
+treemapPlot(reducedTerms.MF.LAR, force.print.labels=T)
+dev.off()
 ```
-
-
-
