@@ -31,6 +31,18 @@ library("igraph")
 
 ```
 
+#Read in Functional Annotation
+```{r}
+#read in annotation data file
+Annot <- readxl::read_xlsx("data/Tagseq_zymo_genohub/FileS2_Pver_gene_annot_May28.xlsx", skip=4) 
+
+#list gene names
+annot.genes <- as.data.frame(Annot$Gene)
+colnames(annot.genes)[1] <- "Gene"
+head(annot.genes)
+
+```
+
 #Read in data and metadata
 ```{r}
 #read in metadata
@@ -42,8 +54,37 @@ sample_ColData$group <- paste0(sample_ColData$Stage,"_",sample_ColData$Temperatu
 #Read in data
 TranscriptCountData <- as.data.frame(read.csv(file= "data/Tagseq_zymo_genohub/Pverr_larvae_gene_count_matrix.csv", sep=",", header = TRUE))
 
-#view data
-head(TranscriptCountData)
+colnames(TranscriptCountData)[1] <- "Gene"
+
+# change Pver_novel_gene_ to Pver_novel_model_
+TranscriptCountData$Gene <- gsub("Pver_gene_novel_gene_", "Pver_novel_gene_", TranscriptCountData$Gene) #remove "_gene" from the new column
+
+#remove _gene_split_gene_
+TranscriptCountData$Gene <- gsub("Pver_gene_split_gene_", "Pver_gene_", TranscriptCountData$Gene)
+
+#remove everything after the - in split gene query name
+TranscriptCountData$Gene <- sub("\\-.*", "", TranscriptCountData$Gene)
+
+#Pver_gene_g14648_g14650
+#add a string before the second occurrence of a string
+# Use gsub to replace the pattern in the specific column
+TranscriptCountData$Gene <- gsub("(_gene_g[0-9]+)_g", "\\1_gene_g", TranscriptCountData$Gene)
+
+#Pver_gene_g16481_gene_g16482_g16480
+#add _gene before the third occurrence of _g
+TranscriptCountData$Gene[20630] <- "Pver_gene_g16481_gene_g16482_gene_g16480"
+
+#list gene names
+trans.genes <- (as.data.frame(TranscriptCountData$Gene))
+head(trans.genes)
+colnames(trans.genes)[1] <- "Gene"
+
+#check to see that all gene names in the counts data are also found in the annotation data
+missing.trans.genes<- dplyr::setdiff(trans.genes, annot.genes) 
+length(missing.trans.genes)
+
+missing.annot.genes<- dplyr::setdiff(annot.genes, trans.genes) 
+length(missing.annot.genes)
 
 #assign the first row of gene names as rownames
 rownames(TranscriptCountData) <- TranscriptCountData[,1]
@@ -53,12 +94,6 @@ TranscriptCountData <- TranscriptCountData[,-1]
 
 #view data
 head(TranscriptCountData)
-```
-
-#Functional Annotation
-```{r}
-#read in annotation data file
-Annot <- readxl::read_xlsx("data/Tagseq_zymo_genohub/FileS2_Pver_gene_annot_May28.xlsx", skip=4) 
 ```
 
 #filter expression values for selected data set and for PoverA
@@ -150,8 +185,7 @@ plotPCA(rld, intgroup = c("group")) #plot PCA of samples with all data
 # Gene Expression Analysis
 ```{r}
 #Identify genes that are expressed 
-
-#genes in genome  27,439 plus the String Tie identified genes = 28,111
+#genes in genome  27,439 
 
 #Identify number of genes that are expressed in the filtered dataset
 genes.expressed <- nrow(filt.count.mat)
@@ -184,36 +218,61 @@ unannot <- sum(is.na(EG.Annot$Hit_accession))
 # Quantify Gene Length
 ```{r}
 #read in the genome gff file
-calc.lengths <- read.table("data/Tagseq_zymo_genohub/Pver_genome_assembly_v1.0_fixed.gff3", header=F)
+calc.lengths <- read.table("data/Tagseq_zymo_genohub/Pver_genome_assembly_v1.0_modified.gff3", header=F)
 
 #filter to the mRNA
-calc.lengths <- calc.lengths %>% filter(V3=="mRNA")
+calc.lengths <- calc.lengths %>% filter(V3=="gene")
 
 #calculate the length from the stop and start values
 calc.lengths$length <- calc.lengths$V5 - calc.lengths$V4
 
 #trim the IDs to the gene name only
-calc.lengths$V9 <- str_after_nth(calc.lengths$V9, "\\;", 1)
-calc.lengths$V9 <- gsub("geneID=", "", calc.lengths$V9)
+calc.lengths$V9 <- str_before_nth(calc.lengths$V9, "\\;", 1)
+calc.lengths$V9 <- gsub("ID=", "", calc.lengths$V9)
+calc.lengths$V9 <-  gsub("-.*","",calc.lengths$V9) #remove the extra g number after the dash
+
+# change Pver_novel_gene_ to Pver_novel_model_
+calc.lengths$V9 <- gsub("Pver_gene_novel_gene_", "Pver_novel_gene_", calc.lengths$V9) #remove "_gene" from the new column
+
+calc.lengths$V9 <- gsub("Pver_gene_split_gene_", "Pver_gene_", calc.lengths$V9)
+
+#Pver_gene_g14648_g14650
+#add a string before the second occurrence of a string
+# Use gsub to replace the pattern in the specific column
+calc.lengths$V9 <- gsub("(_gene_g[0-9]+)_g", "\\1_gene_g", calc.lengths$V9)
+
+#Pver_gene_g16481_gene_g16482_g16480
+#add _gene before the third occurrence of _g
+calc.lengths$V9[16445] <- "Pver_gene_g16481_gene_g16482_gene_g16480"
+
 
 #subset the dataframe to gene name and gene length
 calc.lengths <- calc.lengths[,c(9:10)]
 
 #rename the column
 colnames(calc.lengths)[1] <- "Gene"
+
+#list gene names
+gff.genes <- (as.data.frame(calc.lengths$Gene))
+head(gff.genes)
+colnames(gff.genes)[1] <- "Gene"
+
+missing.gff.genes<- dplyr::setdiff(gff.genes, annot.genes) 
+length(missing.gff.genes)
+
 ```
 
 #GO enrichment of DEGs that are expressed in the filtered Embryos dataset
 ```{r}
 
 #set the all transcripts list
-ALL<-row.names(data)
+ALL<-row.names(TranscriptCountData)
 
 #set the enrichment test list with the expressed fitered genes
 DEG <- as.character(EGs$Gene) 
 
 #set ID names
-IDs <- row.names(data) 
+#IDs <- row.names(TranscriptCountData) 
 
 #set length information
 LENGTH <-calc.lengths 
@@ -353,120 +412,6 @@ dev.off()
 
 ```
 
-```{r}
 
-reducedTerms.EMB <- left_join(reducedTerms.EMB, EMB.BP.INT, by="category")
-
-
-#identify the links between terms
-edges <- reducedTerms.EMB[,c(8,7)]
-vertices <- reducedTerms.EMB[,c(7,6,8)]
-#generate a graph object
-mygraph <- graph_from_data_frame(edges, vertices=vertices)
-
-pdf("figures/circle_BP_embryo_expression.pdf", width = 16, height = 8)
-ggraph(mygraph, layout = 'circlepack') + 
-  geom_node_circle(aes(fill = parentTerm)) +
-  theme_void()
-dev.off()
-
-pdf("figures/2circle_BP_embryo_expression.pdf", width = 16, height = 8)
-ggraph(mygraph, layout = 'partition', circular = TRUE) +
-  geom_node_arc_bar(aes(fill = parentTerm)) +
-  coord_fixed()
-dev.off()
-
-
-pdf("figures/square_BP_embryo_expression.pdf", width = 16, height = 8)
-ggraph(mygraph, layout = 'treemap') + 
-  geom_node_tile(aes(fill = parentTerm))
-  #geom_tile_text(aes(label = parentTerm, size = 3)) 
-dev.off()
-
-
-```
-
-
-# Plot grouped terms
-```{r}
-#conduct clustering of the similarity matrix
-hc <- hclust(dist(simMatrix))
-
-# identify the information for each tip label in the data
-d1 <- data.frame(id=hc$labels,
-                 node=hc$order) #,val=rnorm(30, sd=3))
-colnames(d1)[1] <- "category"
-colnames(reducedTerms.EMB)[1] <- "category"
-d1 <- left_join(d1,reducedTerms.EMB, by="category")
-d1 <- left_join(d1,EMB.BP.INT, by="category")
-
-# Reorder levels of category based on parentTerm
-d1 <- d1 %>% 
-  arrange(parentTerm) %>%
-  mutate(category = factor(category, levels = unique(category)))
-
-#my_colors <- c("pink", "red", "cyan", "blue", "yellow", "orange", "violet", "purple", "brown","tan", "gray")
-
-# Calculate count of each parentTerm
-d1_count <- d1 %>%
-  group_by(parentTerm) %>%
-  summarise(count = n())
-
-# Filter parentTerms with more than n occurrences
-d1_filtered_more <- d1_count %>%
-  filter(count > 9) %>%
-  inner_join(d1, by = "parentTerm")
-
-d1_filtered_less <- d1_count %>%
-  filter(count < 10) %>%
-  inner_join(d1, by = "parentTerm")
-
-#pdf("figures/EMB_GO_Enrichment_semsim.pdf", width = 8, height = 24)
-EMB.BPGO.more <- d1_filtered_more %>%
-  ggplot(aes(x=category, y=-log10(over_represented_pvalue), colour=parentTerm)) +
-  #ylim(-16,16)+
-  geom_segment(aes(x=category, xend=category, y=0, yend=-log10(over_represented_pvalue), colour = parentTerm),
-               linewidth=1) +
-  geom_point(aes(size=numDEInCat), colour="black")+
-  facet_grid(parentTerm ~ ., scales="free_y", labeller = label_wrap_gen(width = 2, multi_line = TRUE))+
-  scale_colour_discrete() + 
-  coord_flip()+
-  theme_classic() +
-  theme(legend.position = "none",
-        axis.title.y = element_blank(),
-        axis.title.x = element_text(size = 14, face = "bold"),
-        axis.text.x = element_text(size = 4),
-        axis.text.y = element_text(size = 4),
-        plot.title = element_text(size = 40, face = "bold"))+
-  ggtitle('B')
-EMB.BPGO.more
-#dev.off()
-
-EMB.BPGO.less <- d1_filtered_less %>%
-  ggplot(aes(x=category, y=-log10(over_represented_pvalue), colour=parentTerm)) +
-  #ylim(-16,16)+
-  geom_segment(aes(x=category, xend=category, y=0, yend=-log10(over_represented_pvalue), colour = parentTerm),
-               linewidth=1) +
-  geom_point(aes(size=numDEInCat), colour="black")+
-  facet_grid(parentTerm ~ ., scales="free_y", labeller = label_wrap_gen(width = 2, multi_line = TRUE))+
-  scale_colour_discrete() + 
-  coord_flip()+
-  theme_classic() +
-  theme(legend.position = "none",
-        axis.title.y = element_blank(),
-        axis.title.x = element_text(size = 14, face = "bold"),
-        axis.text.x = element_text(size = 4),
-        axis.text.y = element_text(size = 4),
-        plot.title = element_text(size = 40, face = "bold"))+
-  ggtitle('B')
-EMB.BPGO.less
-#dev.off()
-
-EMB.GOplots <- ggarrange(EMB.BPGO.more, EMB.BPGO.less, ncol=2)
-ggsave("figures/EMB_GO_Enrichment_semsim_tree.pdf", EMB.GOplots, width = 10, height=16)
-ggsave("figures/EMB_GO_Enrichment_semsim_tree.png", EMB.GOplots, width = 10, height=16)
-
-
-```
 
 

@@ -307,7 +307,7 @@ DEGs$Gene <- rownames(DEGs)
 #join counts and annotation
 Output <- left_join(DEGs,Annot,  by="Gene")
 #save file of annotated DEGs
-write.csv(Output,"output/Annotated_DEGS.csv")
+write.csv(Output,"output/Lar_vs_Emb_Annotated_DEGS.csv")
 
 #separate short hit name from long name
 Output <- Output %>% separate(Hit_description, into = c("Hit_description1", "Hit_description2"),
@@ -435,7 +435,7 @@ colnames(enriched.GO.05) <- c("category")
 enriched.GO.05 <- left_join(enriched.GO.05, GO.wall, by="category")
 
 
-#subset the Molecular Functions
+#subset the gene ontology results
 LAR.MF.INT <- subset(enriched.GO.05, ontology=="MF")
 #order by the number in category
 LAR.MF.INT <- LAR.MF.INT[order(LAR.MF.INT$numDEInCat),]
