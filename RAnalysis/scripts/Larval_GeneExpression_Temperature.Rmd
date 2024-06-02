@@ -28,8 +28,22 @@ library("ggtree")
 library("tidytree")
 library("clusterProfiler")
 library("org.Hs.eg.db")
+library("org.Ce.eg.db")
+library("org.Sc.sgd.db")
 library("GOSemSim")
 library("patchwork")
+
+```
+
+#Read in Functional Annotation
+```{r}
+#read in annotation data file
+Annot <- readxl::read_xlsx("data/Tagseq_zymo_genohub/FileS2_Pver_gene_annot_May28.xlsx", skip=4) 
+
+#list gene names
+annot.genes <- as.data.frame(Annot$Gene)
+colnames(annot.genes)[1] <- "Gene"
+head(annot.genes)
 
 ```
 
@@ -44,8 +58,37 @@ sample_ColData$group <- paste0(sample_ColData$Stage,"_",sample_ColData$Temperatu
 #Read in data
 TranscriptCountData <- as.data.frame(read.csv(file= "data/Tagseq_zymo_genohub/Pverr_larvae_gene_count_matrix.csv", sep=",", header = TRUE))
 
-#view data
-head(TranscriptCountData)
+colnames(TranscriptCountData)[1] <- "Gene"
+
+# change Pver_novel_gene_ to Pver_novel_model_
+TranscriptCountData$Gene <- gsub("Pver_gene_novel_gene_", "Pver_novel_gene_", TranscriptCountData$Gene) #remove "_gene" from the new column
+
+#remove _gene_split_gene_
+TranscriptCountData$Gene <- gsub("Pver_gene_split_gene_", "Pver_gene_", TranscriptCountData$Gene)
+
+#remove everything after the - in split gene query name
+TranscriptCountData$Gene <- sub("\\-.*", "", TranscriptCountData$Gene)
+
+#Pver_gene_g14648_g14650
+#add a string before the second occurrence of a string
+# Use gsub to replace the pattern in the specific column
+TranscriptCountData$Gene <- gsub("(_gene_g[0-9]+)_g", "\\1_gene_g", TranscriptCountData$Gene)
+
+#Pver_gene_g16481_gene_g16482_g16480
+#add _gene before the third occurrence of _g
+TranscriptCountData$Gene[20630] <- "Pver_gene_g16481_gene_g16482_gene_g16480"
+
+#list gene names
+trans.genes <- (as.data.frame(TranscriptCountData$Gene))
+head(trans.genes)
+colnames(trans.genes)[1] <- "Gene"
+
+#check to see that all gene names in the counts data are also found in the annotation data
+missing.trans.genes<- dplyr::setdiff(trans.genes, annot.genes) 
+length(missing.trans.genes)
+
+missing.annot.genes<- dplyr::setdiff(annot.genes, trans.genes) 
+length(missing.annot.genes)
 
 #assign the first row of gene names as rownames
 rownames(TranscriptCountData) <- TranscriptCountData[,1]
@@ -56,14 +99,6 @@ TranscriptCountData <- TranscriptCountData[,-1]
 #view data
 head(TranscriptCountData)
 ```
-
-#Functional Annotation
-```{r}
-# Functional Annotation
-Annot <- readxl::read_xlsx("data/Tagseq_zymo_genohub/FileS2_Pver_gene_annot_May28.xlsx", skip=4) #read in data file
-
-```
-
 #filtering values for PoverA
 ```{r}
 
@@ -393,35 +428,59 @@ dev.off()
 # Gene Length
 ```{r}
 #read in the genome gff file
-calc.lengths <- read.table("data/Tagseq_zymo_genohub/Pver_genome_assembly_v1.0_fixed.gff3", header=F)
+calc.lengths <- read.table("data/Tagseq_zymo_genohub/Pver_genome_assembly_v1.0_modified.gff3", header=F)
 
 #filter to the mRNA
-calc.lengths <- calc.lengths %>% filter(V3=="mRNA")
+calc.lengths <- calc.lengths %>% filter(V3=="gene")
 
 #calculate the length from the stop and start values
 calc.lengths$length <- calc.lengths$V5 - calc.lengths$V4
 
 #trim the IDs to the gene name only
-calc.lengths$V9 <- str_after_nth(calc.lengths$V9, "\\;", 1)
-calc.lengths$V9 <- gsub("geneID=", "", calc.lengths$V9)
+calc.lengths$V9 <- str_before_nth(calc.lengths$V9, "\\;", 1)
+calc.lengths$V9 <- gsub("ID=", "", calc.lengths$V9)
+calc.lengths$V9 <-  gsub("-.*","",calc.lengths$V9) #remove the extra g number after the dash
+
+# change Pver_novel_gene_ to Pver_novel_model_
+calc.lengths$V9 <- gsub("Pver_gene_novel_gene_", "Pver_novel_gene_", calc.lengths$V9) #remove "_gene" from the new column
+
+calc.lengths$V9 <- gsub("Pver_gene_split_gene_", "Pver_gene_", calc.lengths$V9)
+
+#Pver_gene_g14648_g14650
+#add a string before the second occurrence of a string
+# Use gsub to replace the pattern in the specific column
+calc.lengths$V9 <- gsub("(_gene_g[0-9]+)_g", "\\1_gene_g", calc.lengths$V9)
+
+#Pver_gene_g16481_gene_g16482_g16480
+#add _gene before the third occurrence of _g
+calc.lengths$V9[16445] <- "Pver_gene_g16481_gene_g16482_gene_g16480"
+
 
 #subset the dataframe to gene name and gene length
 calc.lengths <- calc.lengths[,c(9:10)]
 
 #rename the column
 colnames(calc.lengths)[1] <- "Gene"
+
+#list gene names
+gff.genes <- (as.data.frame(calc.lengths$Gene))
+head(gff.genes)
+colnames(gff.genes)[1] <- "Gene"
+
+missing.gff.genes<- dplyr::setdiff(gff.genes, annot.genes) 
+length(missing.gff.genes)
 ```
 
 #GO enrichment of DEGs that are HIGHER IN EXPRESSION at 31
 ```{r}
 #set the all transcripts list
-ALL<-row.names(data)
+ALL<-row.names(TranscriptCountData)
 
 #set the enrichment test list with the expressed filtered genes
 DEG <- as.character(row.names(up.31.sig.list)) #set the enrichment test list
 
 #set ID names
-IDs <- row.names(data) 
+IDs <- row.names(TranscriptCountData) 
 
 #set length information
 LENGTH <-calc.lengths 
@@ -493,7 +552,7 @@ L31.BP.INT <- L31.BP.INT[order(L31.BP.INT$numDEInCat),]
 ```{r}
 # similarity of GO terms in the DEG list for BP
 simMatrix <- calculateSimMatrix(L31.BP.INT$category,
-                                orgdb="org.Hs.eg.db", #human database
+                                orgdb="org.Ce.eg.db", 
                                 ont=c("BP"),
                                 method="Rel")
 
@@ -502,7 +561,7 @@ scores <- setNames(-log(L31.BP.INT$over_represented_pvalue), L31.BP.INT$category
 reducedTerms.31 <- reduceSimMatrix(simMatrix,
                                 scores,
                                 threshold=0.9,
-                                orgdb="org.Hs.eg.db")
+                                orgdb="org.Ce.eg.db")
 colnames(reducedTerms.31)[1] <- "category"
 
 #conduct clustering of the similarity matrix
@@ -546,13 +605,13 @@ L31BPGO
 #GO enrichment of DEGs that are HIGHER IN EXPRESSION at 28
 ```{r}
 #set the all transcripts list
-ALL<-row.names(data)
+ALL<-row.names(TranscriptCountData)
 
 #set the enrichment test list with the expressed filtered genes
 DEG <- as.character(row.names(up.28.sig.list)) #set the enrichment test list
 
 #set ID names
-IDs <- row.names(data) 
+IDs <- row.names(TranscriptCountData) 
 
 #set length information
 LENGTH <-calc.lengths 
@@ -625,7 +684,7 @@ L28.BP.INT <- L28.BP.INT[order(L28.BP.INT$numDEInCat),]
 
 # similarity of GO terms in the DEG list for BP
 simMatrix <- calculateSimMatrix(L28.BP.INT$category,
-                                orgdb="org.Hs.eg.db", #human database
+                                orgdb="org.Ce.eg.db", 
                                 ont=c("BP"),
                                 method="Rel")
 
@@ -634,7 +693,7 @@ scores <- setNames(-log(L28.BP.INT$over_represented_pvalue), L28.BP.INT$category
 reducedTerms.28 <- reduceSimMatrix(simMatrix,
                                 scores,
                                 threshold=0.9,
-                                orgdb="org.Hs.eg.db")
+                                orgdb="org.Ce.eg.db")
 colnames(reducedTerms.28)[1] <- "category"
 
 #conduct clustering of the similarity matrix

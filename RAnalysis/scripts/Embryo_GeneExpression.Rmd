@@ -24,6 +24,8 @@ library("ggtree")
 library("tidytree")
 library("clusterProfiler")
 library("org.Hs.eg.db")
+library("org.Ce.eg.db")
+library("org.Sc.sgd.db")
 library("GOSemSim")
 library("patchwork")
 library("ggraph")
@@ -349,7 +351,7 @@ write.csv(enriched.GO.05 , file = "output/Embryo_28_Enriched_GOTerms.csv")
 ```{r}
 #calculate the similarity of GO terms in the expressed list for BP
 simMatrix <- calculateSimMatrix(EMB.BP.INT$category,
-                                orgdb="org.Hs.eg.db", #human database
+                                orgdb="org.Ce.eg.db",
                                 ont=c("BP"),
                                 method="Rel")
 
@@ -362,7 +364,7 @@ scores <- setNames(-log(EMB.BP.INT$over_represented_pvalue), EMB.BP.INT$category
 reducedTerms.BP.EMB <- reduceSimMatrix(simMatrix,
                                 scores,
                                 threshold=0.9,
-                                orgdb="org.Hs.eg.db")
+                                orgdb="org.Ce.eg.db")
 colnames(reducedTerms.BP.EMB)[1] <- "category"
 
 #calculate the number of unique parent terms
@@ -382,7 +384,7 @@ dev.off()
 ```{r}
 #calculate the similarity of GO terms in the expressed list for BP
 simMatrix <- calculateSimMatrix(EMB.MF.INT$category,
-                                orgdb="org.Hs.eg.db", #human database
+                                orgdb="org.Ce.eg.db", 
                                 ont=c("MF"),
                                 method="Rel")
 
@@ -395,7 +397,7 @@ scores <- setNames(-log(EMB.MF.INT$over_represented_pvalue), EMB.MF.INT$category
 reducedTerms.MF.EMB <- reduceSimMatrix(simMatrix,
                                 scores,
                                 threshold=0.9,
-                                orgdb="org.Hs.eg.db")
+                                orgdb="org.Ce.eg.db")
 colnames(reducedTerms.MF.EMB)[1] <- "category"
 
 #calculate the number of unique parent terms
