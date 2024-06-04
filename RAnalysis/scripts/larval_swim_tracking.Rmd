@@ -1,0 +1,55 @@
+---
+title: "swim_tracking"
+author: "HM Putnam"
+date: "2024-06-02"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+```
+
+
+
+```{r}
+
+data <- read.csv("data/larval/swimming/swimming.csv")
+
+data$percent.motile <- (data$swimming/(data$swimming+data$still))*100
+data$Treatment <- as.factor(data$Treatment)
+
+#view data
+hist(data$percent.motile)
+boxplot(data$percent.motile)
+boxplot(data$percent.motile ~ data$Treatment)
+
+
+
+res <- aov(log10(percent.motile) ~ Treatment, data=data)
+summary(res)
+hist(res$residuals)
+boxplot(res$residuals)
+```
+
+Plot data
+```{r}
+pdf("figures/motility.pdf", width = 2, height = 3)
+data %>%
+  ggplot( aes(x=Treatment, y=percent.motile, fill=Treatment)) +
+    geom_boxplot() +
+    scale_fill_manual(values=c("lightblue", "red"))+
+    geom_jitter(color="black", size=2, alpha=0.9, pch=17) +
+    theme_classic() +
+    theme(
+      legend.position="none",
+      plot.title = element_text(size=11)
+    ) +
+    ylab("Percent Motile Embryos")+
+    ylim(0,100)
+dev.off()
+#            Df  Sum Sq Mean Sq F value Pr(>F)  
+#Treatment    1 0.06836 0.06836   6.232 0.0371 *
+#Residuals    8 0.08775 0.01097                 
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+```

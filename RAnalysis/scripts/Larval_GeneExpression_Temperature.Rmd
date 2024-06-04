@@ -383,7 +383,7 @@ Output.Higher.31$label <- factor(Output.Higher.31$label, levels = Output.Higher.
 pdf("figures/DEG_LFC_Larvae_Temperature_higher31.pdf", height = 12, width = 8)
 DEG_LFC_31 <- Output.Higher.31 %>% arrange(log2FoldChange) %>%
   ggplot(aes(x=label, y=log2FoldChange, colour=padj)) +
-  ylim(-10,10)+
+  ylim(0,10)+
   geom_point(size=5)+
   scale_colour_gradientn(colours = colorspace::heat_hcl(7))+
   geom_segment(aes(x=label, xend=label, y=0, yend=log2FoldChange),linewidth=4) +
@@ -408,19 +408,19 @@ Output.Higher.28$label <- factor(Output.Higher.28$label, levels = Output.Higher.
 #plot FC and pvalues
 pdf("figures/DEG_LFC_Larvae_Temperature_higher28.pdf", height = 6, width = 8)
 DEG_LFC_28 <- Output.Higher.28 %>% arrange(log2FoldChange) %>%
-  ggplot(aes(x=label, y=log2FoldChange, colour=padj)) +
-  ylim(-10,10)+
+  ggplot(aes(x=label, y=-log2FoldChange, colour=padj)) +
+  ylim(0,10)+
   geom_point(size=5)+
   scale_colour_gradientn(colours = colorspace::heat_hcl(7))+
-  geom_segment(aes(x=label, xend=label, y=0, yend=log2FoldChange),linewidth=4) +
+  geom_segment(aes(x=label, xend=label, y=0, yend=-log2FoldChange),linewidth=4) +
   coord_flip()+
   theme_classic() +
-  theme(legend.position = c(0.8, 0.1),
+  theme(legend.position = c(0.8, 0.2),
         axis.title.y = element_blank(),
         axis.title.x = element_text(size = 14, face = "bold"),
         plot.title = element_text(size = 40, face = "bold"))+
   ggtitle('A')
-DEG_LFC_28
+  DEG_LFC_28
 dev.off()
 ```
 
@@ -751,7 +751,7 @@ pdf("figures/Temperature_DEG_GO_31.pdf", height=12, width = 16)
 (DEG_LFC_31)|(L31BPGO) + plot_layout(guides = "collect")
 dev.off()
 
-pdf("figures/Temperature_DEG_GO_28.pdf", height=12, width = 16)
+pdf("figures/Temperature_DEG_GO_28.pdf", height=7, width = 16)
 (DEG_LFC_28)|(L28BPGO) + plot_layout(guides = "collect")
 dev.off()
 
