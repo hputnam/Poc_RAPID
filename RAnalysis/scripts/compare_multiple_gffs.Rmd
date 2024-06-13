@@ -1,0 +1,129 @@
+---
+title: "compare_multiple_gffs"
+author: "HM Putnam"
+date: "2024-06-13"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+
+```
+
+```{r}
+#read in the genome gff file
+gffs <- read.table("data/Tagseq_zymo_genohub/compare.annotated.gtf", header=F, sep="\t")
+
+```
+
+```{r}
+gffs <- gffs %>%
+  filter(V3=="transcript")
+
+#subset everything with "novel"
+novel <- gffs %>% filter(str_detect(V9, "novel"))
+#subset everything with "split"
+split <- gffs %>% filter(str_detect(V9, "split"))
+
+#remove from gff
+gffs <- gffs %>% filter(!str_detect(V9, "novel"))
+gffs <- gffs %>% filter(!str_detect(V9, "split"))
+
+
+```
+
+Compare gene names between gffs
+```{r}
+gffs <- gffs %>% 
+  separate(V9, ";", into = c("var1", "var2","var3", "var4","var5", "var6","var7"))
+
+#check to see if var1 = var5
+gffs$var1 <- gsub("transcript_id ", "",gffs$var1) 
+gffs$var5 <- gsub(" cmp_ref ", "",gffs$var5)
+
+different.gff.genes<- dplyr::setdiff(gffs$var1, gffs$var5) 
+length(different.gff.genes)
+
+#103 didn't separate into 7 var columns so don't match
+
+#subset everything with "xloc" in var3
+xloc <- gffs %>% filter(str_detect(var3, "xloc"))
+gffs <- gffs %>% filter(!str_detect(var3, "xloc"))
+
+different.gff.genes<- dplyr::setdiff(gffs$var1, gffs$var5) 
+length(different.gff.genes)
+
+#subset everything with "contained_in" in var5
+contained_in <- gffs %>% filter(str_detect(var5, "contained_in"))
+gffs <- gffs %>% filter(!str_detect(var5, "contained_in"))
+
+different.gff.genes<- dplyr::setdiff(gffs$var1, gffs$var5) 
+length(different.gff.genes)
+
+```
+
+Compare gene names between novels
+```{r}
+novel <- novel %>% 
+  separate(V9, ";", into = c("var1", "var2","var3", "var4","var5", "var6","var7"))
+
+#check to see if var1 = var5
+novel$var1 <- gsub("transcript_id ", "",novel$var1) 
+novel$var1 <- gsub("Pver_gene_novel_model", "Pver_novel_model",novel$var1) 
+novel$var4 <- gsub(" cmp_ref ", "",novel$var4)
+
+different.novel.genes<- dplyr::setdiff(novel$var1, novel$var4) 
+length(different.novel.genes)
+
+#0 difs
+
+```
+Compare gene names between split
+```{r}
+split <- split %>% 
+  separate(V9, ";", into = c("var1", "var2","var3", "var4","var5", "var6","var7"))
+
+#check to see if var1 = var5
+split$var1 <- gsub("transcript_id ", "",split$var1) 
+split$var1 <- gsub("Pver_gene_split_gene", "Pver_split_gene",split$var1) 
+split$var4 <- gsub(" cmp_ref ", "",split$var4)
+
+different.split.genes<- dplyr::setdiff(split$var1, split$var4) 
+length(different.split.genes)
+
+#0 difs
+
+```
+
+Compare gene names between xloc
+```{r}
+#check to see if var1 = var4
+xloc$var4 <- gsub(" cmp_ref ", "",xloc$var4)
+xloc$var4 <- gsub("\t5_prime_partial true\t3_prime_partial true", "",xloc$var4)
+xloc$var4 <- gsub("\t5_prime_partial true", "",xloc$var4)
+xloc$var4 <- gsub("\t3_prime_partial true", "",xloc$var4)
+
+different.xloc.genes<- dplyr::setdiff(xloc$var1, xloc$var4) 
+length(different.xloc.genes)
+
+#0 difs
+
+```
+Compare gene names between contained_in
+```{r}
+#check to see if var1 = var6
+contained_in$var6 <- gsub(" cmp_ref ", "",contained_in$var6)
+
+different.contained_in.genes<- dplyr::setdiff(contained_in$var1, contained_in$var6) 
+length(different.contained_in.genes)
+
+#0 difs
+
+```
+
+What is the total of all of the genes?
+```{r}
+
+#sum should equal 23749
+nrow(contained_in)+nrow(gffs)+nrow(novel)+nrow(split)+nrow(xloc)
+```
