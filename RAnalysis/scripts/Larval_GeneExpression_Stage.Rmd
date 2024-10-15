@@ -435,7 +435,7 @@ length(missing.gff.genes)
 #GO enrichment of DEGs that are HIGHER IN EXPRESSION in Larvae
 ```{r}
 #set the all transcripts list
-ALL<-row.names(TranscriptCountData)
+ALL<-row.names(filt.count.mat)
 
 #set the enrichment test list with the expressed filtered genes
 DEG <- as.character(up.LAR.sig.list$Gene) 
@@ -482,8 +482,9 @@ head(GO.wall)
 tail(GO.wall)
 nrow(GO.wall)
 
-#Find only enriched GO terms that are statistically significant at chosen cutoff 
-enriched.GO.05.a<-GO.wall$category[GO.wall$over_represented_pvalue<.01]
+#Find only enriched GO terms that are statistically significant at chosen cutoff
+#include multiple comparison testing correction
+enriched.GO.05.a<- GO.wall$category[p.adjust(GO.wall$over_represented_pvalue, method = "BH") < .05]
 
 #format as dataframe
 enriched.GO.05<-data.frame(enriched.GO.05.a)
@@ -511,7 +512,7 @@ write.csv(enriched.GO.05 , file = "output/DEGS_Up_in_Larvae_vs_Emb_Enriched_GOTe
 
 ```
 
-#Plotting BP enriched in DEGS up.EMB.sig.list
+#Plotting BP enriched in DEGS up.LAR.sig.list
 ```{r}
 # similarity of GO terms in the DEG list for BP
 simMatrix <- calculateSimMatrix(LAR.BP.INT$category,
@@ -535,7 +536,7 @@ pdf("figures/BP_DEGS_Up_in_Larvae_vs_Emb_Enriched_GOTerms_semsim.pdf", width = 1
 treemapPlot(reducedTerms.BP.LAR, force.print.labels=T)
 dev.off()
 ```
-#Plotting MF enriched in DEGS up.EMB.sig.list
+#Plotting MF enriched in DEGS up.LAR.sig.list
 ```{r}
 # similarity of GO terms in the DEG list for BP
 simMatrix <- calculateSimMatrix(LAR.MF.INT$category,

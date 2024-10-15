@@ -1,0 +1,67 @@
+---
+title: "microCT binary"
+author: "HM Putnam"
+date: "2024-09-29"
+output: html_document
+---
+
+```{r}
+#install.packages("magick")
+#install.packages("imager")
+
+library(magick)
+library(imager)
+library(tidyverse)
+```
+
+```{r}
+
+# Step 1: Load the image
+image_path <- "/Users/hputnam/Desktop/SlicesY-240411c_TM_PV038_Pocilopora_verocosa_20um_avg3_100k_CU0p3_FR4_HTe1920/slice01853.tif"
+
+image <- image_read(image_path)
+
+# Step 2: Convert to grayscale
+gray_image <- image_convert(image, colorspace = 'gray')
+
+# Step 3: Convert to a matrix and then to cimg
+image_matrix <- as.integer(image_data(gray_image))
+cimg_image <- as.cimg(image_matrix)
+
+# Step 4: Apply Canny edge detection
+edge_image <- cannyEdges(cimg_image)
+
+# Step 5: Create a binary image (0s and 1s)
+binary_matrix <- edge_image > 0  # Logical array
+
+# Step 6: Convert logical array to binary (1s and 0s)
+binary_image <- as.integer(binary_matrix)
+
+# Step 7: Convert back to cimg with dimensions
+height <- dim(edge_image)[1]
+width <- dim(edge_image)[2]
+binary_cimg <- as.cimg(array(binary_image, dim = c(height, width, 1, 1)))
+
+# Step 8: Export the data to CSV
+write.csv(as.data.frame(binary_cimg), 'binary_image_data.csv', row.names = FALSE, col.names = FALSE)
+
+data <- as.data.frame(binary_cimg)
+
+# Step 9: Filter to keep only the edges (where value is 1)
+data_edges <- data %>% filter(value == 1)
+
+# Step 12: Plot the edge data using ggplot2
+binarycoral <- ggplot(data_edges, aes(x = x, y = y)) +  
+  geom_point(color = "black", size = 0.5) +
+  labs(title = "Edge Points from Image",
+       x = "X Coordinate",
+       y = "Y Coordinate") +
+  theme_minimal()
+
+ggsave("binarycoral.pdf", binarycoral)
+
+#How can I calculate the area of and plot the inner edges and outer edges in x y coordinates
+
+```
+
+

@@ -51,17 +51,17 @@ data$Temperature <- as.numeric(data$avg_temp_interval)
 str(data)
 
 data <- data %>%
-  arrange(colony_id.x) %>%
-  group_by(colony_id.x) %>%
+  arrange(colony_id) %>%
+  group_by(colony_id) %>%
   mutate(curve_id = group_indices())
 
 data <- data %>%
   filter(Light==560) %>%
-  filter(Species == "Recruit") #%>%
+  filter(Stage == "Recruit") #%>%
   #filter(Temperature < 39)
 
 data %>% 
-ggplot(aes(x=Temperature, y=micromol.cm2.s, color=Species, group=colony_id.x))+ 
+ggplot(aes(x=Temperature, y=micromol.cm2.s, color=Species, group=colony_id))+ 
   geom_point()+
   geom_line()+
   ylab("µmol O2 cm^2 s-1")+
@@ -71,26 +71,60 @@ ggplot(aes(x=Temperature, y=micromol.cm2.s, color=Species, group=colony_id.x))+
 ```
 
 ```{r}
-d <- data %>%
-  filter(!colony_id.x == "REC-009") %>%
-  filter(!colony_id.x == "REC-011") %>%
-  filter(!colony_id.x == "REC-013") %>%
-  filter(!colony_id.x == "REC-017") %>%
-  filter(!colony_id.x == "REC-032") %>%
-  filter(!colony_id.x == "REC-012") %>%
-  filter(!colony_id.x == "REC-023") %>%
-  filter(!colony_id.x == "REC-035") %>%
-  filter(!colony_id.x == "REC-037")
+d <- data 
 
-d$micromol.cm2.s <- d$micromol.cm2.s
-d$micromol.cm2.s <- replace(d$micromol.cm2.s, d$micromol.cm2.s<0,0)
+#d$Pc <- replace(d$Pc, d$Pc<0,0)
 
-d <- d[,-c(1,4,6,7,9)]
+d <- d[,-c(1,4,6,7,8,9,10,11)]
 str(d)
 
+d$curve_id <- sub(".*-", "", d$colony_id)
 colnames(d) <- c("Species", "colony_id", "temp","rate","curve_id")
-d$curve_id <- as.numeric(d$curve_id)
-str(d)
+
+#d$rate <- log10(d$rate+1)
+
+d %>% 
+ggplot(aes(x=temp, y=rate, color=Species, group=colony_id))+ 
+  geom_point()+
+  geom_line()+
+  ylab("µmol O2 cm^2 s-1")+
+  facet_wrap(~ curve_id,  ncol = 5)+
+  theme(legend.position = "none")
+
+d <- d %>%
+  filter(Species == "P. meandrina")
+
+ d <- d %>%
+   filter(!colony_id == "REC-011") %>% 
+   filter(!colony_id == "REC-017") %>%  
+   filter(temp < 39)  
+
+d %>% 
+ggplot(aes(x=temp, y=rate, color=Species, group=colony_id))+ 
+  geom_point()+
+  geom_line()+
+  ylab("µmol O2 cm^2 s-1")+
+  facet_wrap(~ curve_id,  ncol = 5)
+
+d %>% 
+ggplot(aes(x=temp, y=rate, color=colony_id, group=colony_id))+ 
+  geom_point()+
+  geom_line()+
+  ylab("µmol O2 cm^2 s-1")
+  
+  # filter(!colony_id == "REC-009") %>% # need to remove the first data point
+  # filter(!colony_id == "REC-023") %>% # need to remove the first data point
+  # filter(!colony_id == "REC-031") %>% # need to remove the first data point
+  # filter(!colony_id == "REC-030") %>% # need to remove the first data point
+  # filter(!colony_id == "REC-035") %>% # need to remove the first data point
+  # filter(!colony_id == "REC-037") %>% # need to remove the first data point
+  # filter(!colony_id == "REC-039") %>% # need to remove the first data point
+  # 
+  # filter(!colony_id == "REC-032") %>% # need to remove the first 2 data points
+  # 
+  # filter(!colony_id == "REC-011") %>% # need to remove the last data point
+  # filter(!colony_id == "REC-013") %>% # need to remove the last data point
+  # filter(!colony_id == "REC-017") %>% # need to remove the last 4 data points
 
 ```
 

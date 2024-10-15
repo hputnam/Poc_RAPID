@@ -6,7 +6,7 @@ date: 20220829
 output: html_document
 ---
 
-# PR data from heatwave timepoint 1 corals
+# Load libraries
 ```{r setup, include = FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
@@ -39,100 +39,147 @@ library('car')
 library('scales')
 library('future') ## libraries for parallel processing
 library('furrr') ## libraries for parallel processing
+library('minpack.lm')
 ```
 
-## Import data
+## Import data and plot raw data
 ```{r, warning = FALSE}
-data <- read.csv("output/pr_curve_extracted_rates.csv")
-str(data)
-data$Temperature <- as.numeric(data$Temperature)
-str(data)
 
-data %>% 
-ggplot(aes(x=Temperature, y=micromol.cm2.s, color=Species, group=colony_id.x))+ 
+#import data
+data.0 <- read.csv("output/pr_curve_extracted_rates.csv")
+str(data.0)
+data.0$Temperature <- as.numeric(data.0$Temperature)
+str(data.0)
+
+#plot raw data grouped by colony for all species
+data.0 %>% 
+ggplot(aes(x=Temperature, y=micromol.cm2.s, color=Species, group=colony_id))+ 
   geom_point()+
   geom_line()+
   ylab("µmol O2 cm^2 s-1")+
-  facet_wrap(~ Species*Light,  ncol = 5)+
+  facet_wrap(~ Species*Light*Stage,  ncol = 6)+
   theme(legend.position = "none")
 
+#filter down to P. meandrina that has both adult and recruits
+data <- data.0 %>% 
+  filter(Species=="P. meandrina")
+
+#make a grouping variable
+data$group <- paste0(data$colony_id, data$Temperature)
+
+#separate P data
+data.light <- data %>%
+  filter(Light==560) 
+
+#separate R data
+data.dark <- data %>%
+  filter(Light==0) 
+
+#joing data and identify temperature of each sample
+data2 <- left_join(data.light, data.dark, by = "group") %>%
+  select(Species = Species.x, 
+         colony_id = colony_id.x, 
+         temp = avg_temp_interval.x, 
+         temp_dark = avg_temp_interval.y, 
+         Stage = Stage.x, 
+         Pnet = micromol.cm2.h.x, 
+         Rdark = micromol.cm2.h.y)
+
+#calculate Pgross
+data2$Pgross <- data2$Pnet- data2$Rdark
+
+#set negative respiration to 0
+data2$Rdark <- -data2$Rdark
+data2$Rdark <- replace(data2$Rdark, data2$Rdark<0,0)
+
+#plot calculated data for Pgross
+data2 %>% 
+ggplot(aes(x=temp, y=Pgross, color=Species, group=colony_id))+ 
+  geom_point()+
+  geom_line()+
+  ylab("Pgross µmol O2 cm^2 h-1")+
+  facet_wrap(~ Species*Stage,  ncol = 6)+
+  theme(legend.position = "none")
+
+#plot calculated data for Rdark
+data2 %>% 
+ggplot(aes(x=temp_dark, y=Rdark, color=Species, group=colony_id))+ 
+  geom_point()+
+  geom_line()+
+  ylab("Rdark µmol O2 cm^2 h-1")+
+  facet_wrap(~ Species*Stage,  ncol = 6)+
+  theme(legend.position = "none")
 ```
 
+Photosynthesis
 ```{r}
-d <- data %>%
-  filter(Light==560) %>%
-  filter(!Species == "Recruit") %>%
-  #filter(!colony_id.x == "POT-030")%>%
-  filter(!colony_id.x == "POT-090")%>%
-  #filter(!colony_id.x == "POV-004")%>%
-  filter(!colony_id.x == "POV-069")
+#assign dataset to d
+d <- data2 
 
-#d$micromol.cm2.s <- d$micromol.cm2.s
-d$micromol.cm2.s <- replace(d$micromol.cm2.s, d$micromol.cm2.s<0,0)
+d <- d %>%
+  mutate(curve_id = dense_rank(colony_id))  # Assigns a unique rank to each colony_id
 
-d <- d[,-c(1,3,6,7,9)]
+#set rate as Pgross
+d$rate <- d$Pgross
+#range(d$rate)
+
+d <- d %>%
+  select(curve_id, Stage, temp_dark, rate)  # Replace with the column names you want
+
+#rename colnames
+colnames(d) <- c("curve_id", "Stage", "temp", "rate")
+
 str(d)
 
-colnames(d) <- c("Species", "curve_id", "temp","rate")
 d$curve_id <- as.numeric(d$curve_id)
 str(d)
 
+
 ```
 
-
-TPC fitting 
-Padifeld et al **rTPC and nls.multstart: A new pipeline to fit thermal performance curves in r**  
-https://besjournals.onlinelibrary.wiley.com/doi/full/10.1111/2041-210X.13585  
-
-Sharpe Schoolfield 1981 model
-Schoolfield, R. M., Sharpe, P. J. H., & Magnuson, C. E. (1981). Non-linear regression of biological temperature-dependent rate models based on absolute reaction-rate theory. Journal of theoretical biology, 88(4), 719-731. https://doi.org/10.1016/0022-5193(81)90246-0
-
-#edit nls_multstart to allow for a progress bar
+# P. meandrina CURVE FIT 
 ```{r}
-# edit nls_multstart to allow for a progress bar
-nls_multstart_progress <- function(formula, data = parent.frame(), iter, start_lower, 
-                                   start_upper, supp_errors = c("Y", "N"), convergence_count = 100, 
-                                   control, modelweights, ...){
-  if(!is.null(pb)){
-    pb$tick()
-  }
-  nls_multstart(formula = formula, data = data, iter = iter, start_lower = start_lower, 
-                start_upper = start_upper, supp_errors = supp_errors, convergence_count = convergence_count, 
-                control = control, modelweights = modelweights, ...)
-}
+
+#select data
+d <- d %>% 
+  filter(temp >18) %>% 
+  filter(!curve_id == 3) %>% 
+  filter(!curve_id == 8) %>%
+  filter(!curve_id == 10) %>% 
+  filter(!curve_id == 11) %>% 
+  filter(!curve_id == 12) %>% 
+  filter(!curve_id == 13) %>% 
+  filter(!curve_id == 22) %>% 
+  filter(!curve_id == 23) %>% 
+  filter(!curve_id == 26) %>% 
+  filter(!curve_id == 32)
+
+
+#plot calculated data for Pgross to check for outliers and data issues
+d %>% 
+ggplot(aes(x=temp, y=rate, color=curve_id, group=curve_id))+ 
+  geom_point()+
+  geom_line()+
+  ylab("Pgross µmol O2 cm^2 h-1")+
+  facet_wrap(~ curve_id,  ncol = 6)+
+  theme(legend.position = "right")
 ```
 
-# start progress bar and estimate time it will take
-```{r}
-# start progress bar and estimate time it will take
-number_of_models <- 1
-number_of_curves <- length(unique(d$curve_id))
 
-# setup progress bar
-pb <- progress::progress_bar$new(total = number_of_curves*number_of_models,
-                                 clear = FALSE,
-                                 format ="[:bar] :percent :elapsedfull")
-
-```
-
-# fit chosen model formulation in rTPC
 ```{r}
 # fit chosen model formulation in rTPC
 d_fits <- nest(d, data = c(temp, rate)) %>%
-  mutate(sharpeschoolhigh = map(data, ~nls_multstart_progress(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+  mutate(sharpeschoolhigh = map(data, ~nls_multstart(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
                         data = .x,
                         iter = c(3,3,3,3),
-                        start_lower = get_start_vals(.x$temp, .x$rate, model_name = 'sharpeschoolhigh_1981') - 10,
-                        start_upper = get_start_vals(.x$temp, .x$rate, model_name = 'sharpeschoolhigh_1981') + 10,
+                        start_lower = get_start_vals(.x$temp, .x$rate, model_name = 'sharpeschoolhigh_1981') - 1,
+                        start_upper = get_start_vals(.x$temp, .x$rate, model_name = 'sharpeschoolhigh_1981') + 1,
                         lower = get_lower_lims(.x$temp, .x$rate, model_name = 'sharpeschoolhigh_1981'),
                         upper = get_upper_lims(.x$temp, .x$rate, model_name = 'sharpeschoolhigh_1981'),
                         supp_errors = 'Y',
                         convergence_count = FALSE)))
 
-```
-
-
-```{r}
+# create new list column of for high resolution data
 d_preds <- mutate(d_fits, new_data = map(data, ~tibble(temp = seq(min(.x$temp), max(.x$temp), length.out = 100)))) %>%
   # get rid of original data column
   select(., -data) %>%
@@ -142,34 +189,1857 @@ d_preds <- mutate(d_fits, new_data = map(data, ~tibble(temp = seq(min(.x$temp), 
   # this uses both fit and new_data list columns
   mutate(preds = map2(fit, new_data, ~augment(.x, newdata = .y))) %>%
   # select only the columns we want to keep
-  select(curve_id, Species,model_name, preds) %>%
+  select(curve_id, Stage, model_name, preds) %>%
   # unlist the preds list column
   unnest(preds)
 
 glimpse(d_preds)
+
+
+# plot
+ggplot(d_preds) +
+  geom_line(aes(temp, .fitted, col = Stage)) +
+  geom_point(aes(temp, rate), d) +
+  facet_wrap(~curve_id, ncol = 6) +
+  theme_bw() +
+  theme(legend.position = 'right') +
+  scale_color_brewer(type = 'qual', palette = 2) +
+  labs(x = 'Temperature (ºC)',
+       y = 'Metabolic rate')
+```
+
+
+#calculate all of the TPC parameters
+```{r}
+d_params <- pivot_longer(d_fits, names_to = 'model_name', values_to = 'fit', c(sharpeschoolhigh)) %>%
+  mutate(params = map(fit, calc_params)) %>%
+  select(curve_id, Stage, model_name, params) %>%
+  unnest(params)
+
+str(d_params)
+
+d_params_long <- d_params %>%
+  pivot_longer(cols = 4:14,        # Specify the columns to pivot
+               names_to = "param", # Name of the new column for parameter names
+               values_to = "value") # Name of the new column for parameter values
+
+
+d_params_long %>%
+  filter(!param=="ctmin")  %>%
+  filter(!param=="thermal_tolerance")  %>%
+ggplot(., aes(x = Stage, y = value, color=Stage)) +
+  geom_point(position = position_jitter(width = 0.2), alpha = 0.7) +  # Data points with jitter for better visibility
+  facet_wrap(~param, scales="free_y", ncol = 3) +
+  labs(x = "Stage",
+       y = "value") +
+  theme_bw()
+```
+
+
+#extract curve coefficients
+```{r}
+# get coefs
+d_fits <- mutate(d_fits, coefs = map(sharpeschoolhigh, coef))
+
+# fit with nlsLM instead
+d_fits <- mutate(d_fits, nls_fit = map2(data, coefs, ~minpack.lm::nlsLM(rate ~ sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                                        data = .x,
+                                        start = .y,
+                                        lower = get_lower_lims(.x$temp, .x$rate, model_name = 'sharpeschoolhigh_1981')-1,
+                                        upper = get_upper_lims(.x$temp, .x$rate, model_name = 'sharpeschoolhigh_1981')+1)))
+
+#view first curve output
+d_fits$nls_fit[[1]]
+
+```
+
+Bootstrap each model https://padpadpadpad.github.io/rTPC/articles/bootstrapping_many_curves.html
+```{r}
+
+d_fits <- mutate(d_fits, bootstrap = list(rep(NA, n())))
+
+# run for loop to bootstrap each refitted model
+for(i in 1:nrow(d_fits)){
+  temp_data <- d_fits$data[[i]]
+  temp_fit <- minpack.lm::nlsLM(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                        data = temp_data,
+                        start = coef(d_fits$sharpeschoolhigh[[i]]),
+                        lower = get_lower_lims(temp_data$temp, temp_data$rate, model_name = 'sharpeschoolhigh_1981')-1,
+                        upper = get_upper_lims(temp_data$temp, temp_data$rate, model_name = 'sharpeschoolhigh_1981')+1)
+  boot <- Boot(temp_fit, method = 'residual')
+  d_fits$bootstrap[[i]] <- boot
+  rm(list = c('temp_fit', 'temp_data', 'boot'))
+}
+
+```
+
+calculate confidence intervals
+```{r}
+# get the values of each bootstrap
+d_fits <- mutate(d_fits, output_boot = map(bootstrap, function(x) x$t))
+
+# calculate predictions 
+d_fits <- mutate(d_fits, preds = map2(output_boot, data, function(x, y){
+  temp <- as.data.frame(x) %>%
+    drop_na() %>%
+    mutate(iter = 1:n()) %>%
+    group_by_all() %>%
+    do(data.frame(temp = seq(min(y$temp), max(y$temp), length.out = 100))) %>%
+    ungroup() %>%
+    mutate(pred = sharpeschoolhigh_1981(temp, r_tref,e,eh,th, tref=28))
+  return(temp)
+}))
+
+# select, unnest and calculate 95% CIs of predictions
+boot_conf_preds <- select(d_fits, curve_id, preds, Stage) %>%
+  unnest(preds) %>%
+  group_by(curve_id, temp, Stage) %>%
+  summarise(conf_lower = quantile(pred, 0.025),
+            conf_upper = quantile(pred, 0.975),
+            .groups = 'drop')
+
+#Plot fitted curves and CI
+ d_preds %>% 
+  ggplot() +
+  geom_line(aes(temp, .fitted, col = Stage)) +
+  geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper, fill = Stage), boot_conf_preds, alpha = 0.3) +
+  geom_point(aes(temp, rate), d, size = 2) +
+  theme_bw(base_size = 12) +
+  labs(x = 'Temperature (ºC)',
+       y = 'Rate') +
+  facet_wrap(~curve_id, ncol=4)
+ 
+ 
+ #Plot fitted curves and CI
+ d_preds %>% 
+  ggplot() +
+  geom_line(aes(temp, .fitted, col = Stage)) +
+  geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper, fill = Stage), boot_conf_preds, alpha = 0.3) +
+  geom_point(aes(temp, rate), d, size = 2) +
+  theme_bw(base_size = 12) +
+  labs(x = 'Temperature (ºC)',
+       y = 'Rate') +
+  facet_wrap(~curve_id, ncol=4)
+ 
+```
+
+#extract parameters and bootstrapped CI
+```{r}
+
+# get tidied parameters using broom::tidy
+# get confidence intervals of parameters
+d_fits <- mutate(d_fits, params = map(nls_fit, broom::tidy),
+                 cis = map(bootstrap, function(x){
+                   temp <- confint(x, method = 'bca') %>%
+                     as.data.frame() %>%
+                     rename(conf_lower = 1, conf_upper = 2) %>%
+                     rownames_to_column(., var = 'term')
+                   return(temp)
+                   }))
+
+# join parameter and confidence intervals in the same dataset 
+left_join(select(d_fits, curve_id, Stage, params) %>% unnest(params),
+          select(d_fits, curve_id, Stage, params, cis) %>% unnest(cis)) %>%
+  ggplot(., aes(Stage, estimate, color=Stage)) +
+  geom_point(size = 4) +
+  geom_linerange(aes(ymin = conf_lower, ymax = conf_upper)) +
+  theme_bw() +
+  facet_wrap(~term, scales = 'free')
+
 ```
 
 ```{r}
-ggplot(d_preds) +
-  geom_line(aes(temp, .fitted, col = Species, group=curve_id)) +
-  geom_point(aes(temp, rate, col = Species), d) +
-  #facet_wrap(~curve_id*Species, scales = 'free_y', ncol = 6) +
-  theme_bw() +
-  theme(legend.position = 'none') +
-  scale_color_brewer(type = 'qual', palette = 2) +
-  labs(x = 'Temperature (ºC)',
-       y = 'Photosynthetic rate',
-       title = 'sharpeschoolhigh')
 
-ggplot(d_preds) +
-  geom_line(aes(temp, .fitted, col = Species, group=curve_id)) +
-  geom_point(aes(temp, rate, col = Species), d) +
-  facet_wrap(~curve_id*Species, scales = 'free_y', ncol = 2) +
+# create empty list column
+d_fits <- mutate(d_fits, ci_extra_params = list(rep(NA, n())))
+
+
+for(i in 1:nrow(d_fits)){
+  temp_data <- d_fits$data[[i]]
+  temp_fit <- minpack.lm::nlsLM(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                        data = temp_data,
+                        start = d_fits$coefs[[i]],
+                        lower = get_lower_lims(temp_data$temp, temp_data$rate, model_name = 'sharpeschoolhigh_1981')-1,
+                        upper = get_upper_lims(temp_data$temp, temp_data$rate, model_name = 'sharpeschoolhigh_1981')+1)
+  boot <- Boot(temp_fit, f = function(x){unlist(calc_params(x))}, labels = names(calc_params(temp_fit)), R = 40, method = 'case') %>%
+  confint(., method = 'bca') %>%
+  as.data.frame() %>%
+  rename(conf_lower = 1, conf_upper = 2) %>%
+  rownames_to_column(., var = 'param')
+  d_fits$ci_extra_params[[i]] <- boot
+  rm(list = c('temp_fit', 'temp_data', 'boot'))
+}
+
+
+# calculate extra params for each model and put in long format to begin with
+d_fits <- mutate(d_fits, extra_params = map(nls_fit, function(x){calc_params(x) %>% pivot_longer(everything(), names_to =  'param', values_to = 'estimate')}))
+
+dx <- left_join(select(d_fits, curve_id, Stage, extra_params) %>% unnest(extra_params),
+          select(d_fits, curve_id, Stage, ci_extra_params) %>% unnest(ci_extra_params))
+  
+dx  %>%
+  ggplot(., aes(Stage, estimate, color=Stage)) +
+  geom_point(size = 4) +
+  geom_linerange(aes(ymin = conf_lower, ymax = conf_upper)) +
   theme_bw() +
-  theme(legend.position = 'none') +
-  scale_color_brewer(type = 'qual', palette = 2) +
+  labs(y = 'estimate', x = "curve id") +
+  facet_wrap(~param, scales = 'free', ncol=2) +
+  labs(title = 'Calculation of confidence intervals for extra parameters')
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+#fit 
+adult.meandrina.fit <- nls_multstart(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                        data = d.meandrina.adult,
+                        iter = c(3,3,3,3),
+                        start_lower = get_start_vals(d.meandrina.adult$temp, d.meandrina.adult$rate, model_name = 'sharpeschoolhigh_1981') - 1,
+                        start_upper = get_start_vals(d.meandrina.adult$temp, d.meandrina.adult$rate, model_name = 'sharpeschoolhigh_1981') + 1,
+                        lower = get_lower_lims(d.meandrina.adult$temp, d.meandrina.adult$rate, model_name = 'sharpeschoolhigh_1981'),
+                        upper = get_upper_lims(d.meandrina.adult$temp, d.meandrina.adult$rate, model_name = 'sharpeschoolhigh_1981'),
+                        supp_errors = 'Y',
+                        convergence_count = FALSE)
+
+adult.meandrina.fit
+
+#generate the predicted data
+adult_meandrina_new_data <- data.frame(temp = seq(min(d.meandrina.adult$temp), max(d.meandrina.adult$temp), 0.5))
+adult.meandrina.preds <- augment(adult.meandrina.fit, newdata = adult_meandrina_new_data)
+
+#calculate TPC parameters
+adult.meandrina.TCP.res <- calc_params(adult.meandrina.fit) %>%
+  mutate_all(round, 2)   # round 
+
+adult.meandrina.TCP.res
+
+### Bootstrapping  curve fit    
+# refit model using nlsLM
+adult.meandrina.fit_nlsLM <- minpack.lm::nlsLM(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                        data = d.meandrina.adult,
+                        start = coef(adult.meandrina.fit),
+                        lower = get_lower_lims(d.meandrina.adult$temp, d.meandrina.adult$rate, model_name = 'sharpeschoolhigh_1981')-1,
+                        upper = get_upper_lims(d.meandrina.adult$temp, d.meandrina.adult$rate, model_name = 'sharpeschoolhigh_1981')+1,
+                        weights = rep(1, times = nrow(d.meandrina.adult)))
+
+# bootstrap using case resampling
+adult.meandrina.boot1 <- Boot(adult.meandrina.fit_nlsLM, method = 'case')
+
+# look at the data
+head(adult.meandrina.boot1$t)
+
+
+# create predictions of each bootstrapped model
+adult.meandrina.boot1_preds <- adult.meandrina.boot1$t %>%
+  as.data.frame() %>%
+  drop_na() %>%
+  mutate(iter = 1:n()) %>%
+  group_by_all() %>%
+  do(data.frame(temp = seq(min(d.meandrina.adult$temp), max(d.meandrina.adult$temp), length.out = 100))) %>%
+  ungroup() %>%
+  mutate(pred = sharpeschoolhigh_1981(temp, r_tref, e, eh, th, tref = 28))
+
+# calculate bootstrapped confidence intervals
+adult.meandrina.boot1_conf_preds <- group_by(adult.meandrina.boot1_preds, temp) %>%
+  summarise(conf_lower = quantile(pred, 0.025),
+            conf_upper = quantile(pred, 0.975)) %>%
+  ungroup()
+
+# plot bootstrapped CIs
+adult.meandrina.CI.plot <- ggplot() +
+  geom_line(aes(temp, .fitted), adult.meandrina.preds, col = 'orange') +
+  geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper), adult.meandrina.boot1_conf_preds, fill = 'orange', alpha = 0.3) +
+  geom_point(aes(temp, rate), d.meandrina.adult, size = 2, alpha = 0.5,col = 'orange') +
+  theme_bw(base_size = 12) +
   labs(x = 'Temperature (ºC)',
-       y = 'Photosynthetic rate',
-       title = 'sharpeschoolhigh')
+       y = 'Rate (µmol O2/cm2/h)')
+adult.meandrina.CI.plot
+
+```
+P meandrina recruit
+```{r}
+# meandrina CURVE FIT
+# P. meandrina
+d.meandrina.recruit <- d %>% 
+  filter(Stage == "Recruit")
+
+#fit 
+recruit.meandrina.fit <- nls_multstart(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                        data = d.meandrina.recruit,
+                        iter = c(3,3,3,3),
+                        start_lower = get_start_vals(d.meandrina.recruit$temp, d.meandrina.recruit$rate, model_name = 'sharpeschoolhigh_1981') - 1,
+                        start_upper = get_start_vals(d.meandrina.recruit$temp, d.meandrina.recruit$rate, model_name = 'sharpeschoolhigh_1981') + 1,
+                        lower = get_lower_lims(d.meandrina.recruit$temp, d.meandrina.recruit$rate, model_name = 'sharpeschoolhigh_1981'),
+                        upper = get_upper_lims(d.meandrina.recruit$temp, d.meandrina.recruit$rate, model_name = 'sharpeschoolhigh_1981'),
+                        supp_errors = 'Y',
+                        convergence_count = FALSE)
+
+recruit.meandrina.fit
+
+#generate the predicted data
+recruit_meandrina_new_data <- data.frame(temp = seq(min(d.meandrina.recruit$temp), max(d.meandrina.recruit$temp), 0.5))
+recruit.meandrina.preds <- augment(recruit.meandrina.fit, newdata = recruit_meandrina_new_data)
+
+#calculate TPC parameters
+recruit.meandrina.TCP.res <- calc_params(recruit.meandrina.fit) %>%
+  mutate_all(round, 2)   # round 
+
+recruit.meandrina.TCP.res
+
+### Bootstrapping  curve fit    
+# refit model using nlsLM
+recruit.meandrina.fit_nlsLM <- minpack.lm::nlsLM(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                        data = d.meandrina.recruit,
+                        start = coef(recruit.meandrina.fit),
+                        lower = get_lower_lims(d.meandrina.recruit$temp, d.meandrina.recruit$rate, model_name = 'sharpeschoolhigh_1981')-1,
+                        upper = get_upper_lims(d.meandrina.recruit$temp, d.meandrina.recruit$rate, model_name = 'sharpeschoolhigh_1981')+1,
+                        weights = rep(1, times = nrow(d.meandrina.recruit)))
+
+# bootstrap using case resampling
+recruit.meandrina.boot1 <- Boot(recruit.meandrina.fit_nlsLM, method = 'case')
+
+# look at the data
+head(recruit.meandrina.boot1$t)
+
+
+# create predictions of each bootstrapped model
+recruit.meandrina.boot1_preds <- recruit.meandrina.boot1$t %>%
+  as.data.frame() %>%
+  drop_na() %>%
+  mutate(iter = 1:n()) %>%
+  group_by_all() %>%
+  do(data.frame(temp = seq(min(d.meandrina.recruit$temp), max(d.meandrina.recruit$temp), length.out = 100))) %>%
+  ungroup() %>%
+  mutate(pred = sharpeschoolhigh_1981(temp, r_tref, e, eh, th, tref = 28))
+
+# calculate bootstrapped confidence intervals
+recruit.meandrina.boot1_conf_preds <- group_by(recruit.meandrina.boot1_preds, temp) %>%
+  summarise(conf_lower = quantile(pred, 0.025),
+            conf_upper = quantile(pred, 0.975)) %>%
+  ungroup()
+
+# plot bootstrapped CIs
+recruit.meandrina.CI.plot <- ggplot() +
+  geom_line(aes(temp, .fitted), recruit.meandrina.preds, col = 'red') +
+  geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper), recruit.meandrina.boot1_conf_preds, fill = 'red', alpha = 0.3) +
+  geom_point(aes(temp, rate), d.meandrina.recruit, size = 2, alpha = 0.5,col = 'red') +
+  theme_bw(base_size = 12) +
+  labs(x = 'Temperature (ºC)',
+       y = 'Rate (µmol O2/cm2/h)')
+recruit.meandrina.CI.plot
+
+```
+
+
+
+```{r}
+ #set plot colors
+cols <- c("Adult"="orange",  "Recruit"="red")
+  
+# plot data and model fit
+PM.TPC.plot <- ggplot(data=d, aes(x=temp)) +
+   geom_point(aes(temp, rate, color="Adult"), d.meandrina.adult, size = 2, alpha = 0.5) +
+   geom_point(aes(temp, rate, color="Recruit"), d.meandrina.recruit, size = 2, alpha = 0.5) +
+   geom_line(aes(temp, .fitted), adult.meandrina.preds, col = 'orange', size=2) +
+   geom_line(aes(temp, .fitted), recruit.meandrina.preds, col = "red", size=2) +
+  geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper), adult.meandrina.boot1_conf_preds, fill = "orange", alpha = 0.3) +
+  geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper), recruit.meandrina.boot1_conf_preds, fill = "red", alpha = 0.3) +
+   xlim(16,41)+
+  #ylim(0,0.45)+
+   scale_x_continuous(breaks=c(16,22,24,26,28,30,32,34,36,41))+
+   theme_bw(base_size = 12) +
+   scale_colour_manual(name="Stage",values=cols)+
+   theme(legend.position = "none",
+         panel.border = element_blank(), panel.grid.major = element_blank(),
+         panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+   labs(x = 'Temperature (ºC)',
+        y = expression("Rate"~µmol~O[2] ~cm^{-2}~h^{-1}))
+
+PM.TPC.plot 
+```
+
+# Bootstrap CI for all TPC parameters
+```{r}
+broom::tidy(adult.meandrina.fit_nlsLM)
+broom::tidy(recruit.meandrina.fit_nlsLM)
+
+```
+
+
+#meandrina adults
+```{r}
+#calculate all the TPC parameters
+adult.meandrina.extra_params <- calc_params(adult.meandrina.fit_nlsLM) %>%
+  pivot_longer(everything(), names_to =  'param', values_to = 'estimate')
+
+#calculate CIs for all the TPC parameters
+adult.meandrina.ci_extra_params <- Boot(adult.meandrina.fit_nlsLM, f = function(x){unlist(calc_params(x))}, labels = names(calc_params(adult.meandrina.fit_nlsLM)), R = 200, method = 'case') %>%
+  confint(., method = 'perc') %>%
+  as.data.frame() %>%
+  rename(conf_lower = 1, conf_upper = 2) %>%
+  rownames_to_column(., var = 'param') %>%
+  mutate(method = 'case bootstrap')
+
+#join the parameters and CIs  
+adult.meandrina.ci_extra_params<- left_join(adult.meandrina.ci_extra_params, adult.meandrina.extra_params)
+adult.meandrina.ci_extra_params$Stage <- "Adult"
+```
+
+#meandrina recruit
+```{r}
+#calculate all the TPC parameters
+recruit.meandrina.extra_params <- calc_params(recruit.meandrina.fit_nlsLM) %>%
+  pivot_longer(everything(), names_to =  'param', values_to = 'estimate')
+
+#calculate CIs for all the TPC parameters
+recruit.meandrina.ci_extra_params <- Boot(recruit.meandrina.fit_nlsLM, f = function(x){unlist(calc_params(x))}, labels = names(calc_params(recruit.meandrina.fit_nlsLM)), R = 200, method = 'case') %>%
+  confint(., method = 'perc') %>%
+  as.data.frame() %>%
+  rename(conf_lower = 1, conf_upper = 2) %>%
+  rownames_to_column(., var = 'param') %>%
+  mutate(method = 'case bootstrap')
+
+#join the parameters and CIs  
+recruit.meandrina.ci_extra_params<- left_join(recruit.meandrina.ci_extra_params, recruit.meandrina.extra_params)
+recruit.meandrina.ci_extra_params$Stage <- "Recruit"
+```
+
+
+#Join Species estimates and CIs
+```{r}
+All_params <- rbind(adult.meandrina.ci_extra_params, recruit.meandrina.ci_extra_params)
+All_params <- All_params %>% 
+ mutate_if(is.numeric, round, 2)
+
+#Plot all of the estimates
+estimate.plots <- ggplot(All_params, aes(Stage, estimate, color=Stage)) +
+  geom_point(size = 2) +
+  scale_color_manual(name="Stage", values=c("orange", "red"))+
+  geom_linerange(aes(ymin = conf_lower, ymax = conf_upper)) +
+  theme_bw() +
+  facet_wrap(~param, scales = 'free_y') +
+  scale_x_discrete('')
+
+estimate.plots
+
+# #filter to only the most relavent and well characterized parameters
+ All_params <- All_params %>% 
+   filter(!param=="ctmin") %>%
+#   filter(!param=="ctmax") %>%
+#   filter(!param=="eh") %>%
+#   filter(!param=="rmax") %>%
+   filter(!param=="skewness") %>%
+#   filter(!param=="topt") %>%
+   filter(!param=="thermal_tolerance") #%>%
+#   filter(!param=="q10") %>%
+#   filter(!param=="e") %>%
+#   filter(!param=="breadth")%>%
+#   filter(!param=="thermal_safety_margin")
+
+  
+#Plot selected  estimates
+estimate.plots <- ggplot(All_params, aes(Stage, estimate, color=Stage)) +
+  geom_point(size = 2) +
+  scale_color_manual(name="Stage", values=c("orange", "red"))+
+  geom_linerange(aes(ymin = conf_lower, ymax = conf_upper)) +
+  theme_bw() +
+  facet_wrap(~param, scales = 'free_y') +
+  scale_x_discrete('')
+
+estimate.plots
+
+```
+
+#Plot Curve and Estimate Output
+```{r}
+#generate a combined figure of TPCs and estimate plots
+figure <- ggarrange(PM.TPC.plot , estimate.plots,
+                    hjust = c(.01,.01),
+                    vjust = c(1.2,.01),
+                    labels = c("A) Pgross", "B) BootStrap TPC Estimates"),
+                    ncol = 1, nrow = 2,
+                    heights=c(1,0.5))
+figure
+
+ggsave("output/Pmeandrina_Pgross_TPC_and_estimates.pdf", figure, dpi=300, w=6, h=8, units="in")
+ggsave("output/Pmeandrina_Pgross_TPC_and_estimates.jpg", figure, dpi=300, w=6, h=8, units="in")
+
+```
+
+
+Dark Respiration
+```{r}
+d <- data2 
+
+#d <- d[,-c(1,5,6,7,8,9,11)]
+#str(d)
+
+colnames(d)
+#colnames(d) <- c("Species", "colony_id", "temp","Stage", "rate")
+d$curve_id <- sub(".*-", "", d$colony_id)
+#range(d$rate)
+
+d$rate <- d$Rdark
+#range(d$rate)
+
+```
+
+# P. meandrina Adults
+```{r}
+# meandrina CURVE FIT
+# P. meandrina
+d.meandrina.adult <- d %>% 
+  filter(Stage == "Adult")
+
+#fit 
+adult.meandrina.fit <- nls_multstart(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                        data = d.meandrina.adult,
+                        iter = c(3,3,3,3),
+                        start_lower = get_start_vals(d.meandrina.adult$temp, d.meandrina.adult$rate, model_name = 'sharpeschoolhigh_1981') - 1,
+                        start_upper = get_start_vals(d.meandrina.adult$temp, d.meandrina.adult$rate, model_name = 'sharpeschoolhigh_1981') + 1,
+                        lower = get_lower_lims(d.meandrina.adult$temp, d.meandrina.adult$rate, model_name = 'sharpeschoolhigh_1981'),
+                        upper = get_upper_lims(d.meandrina.adult$temp, d.meandrina.adult$rate, model_name = 'sharpeschoolhigh_1981'),
+                        supp_errors = 'Y',
+                        convergence_count = FALSE)
+
+adult.meandrina.fit
+
+#generate the predicted data
+adult_meandrina_new_data <- data.frame(temp = seq(min(d.meandrina.adult$temp), max(d.meandrina.adult$temp), 0.5))
+adult.meandrina.preds <- augment(adult.meandrina.fit, newdata = adult_meandrina_new_data)
+
+#calculate TPC parameters
+adult.meandrina.TCP.res <- calc_params(adult.meandrina.fit) %>%
+  mutate_all(round, 2)   # round 
+
+adult.meandrina.TCP.res
+
+### Bootstrapping  curve fit    
+# refit model using nlsLM
+adult.meandrina.fit_nlsLM <- minpack.lm::nlsLM(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                        data = d.meandrina.adult,
+                        start = coef(adult.meandrina.fit),
+                        lower = get_lower_lims(d.meandrina.adult$temp, d.meandrina.adult$rate, model_name = 'sharpeschoolhigh_1981')-1,
+                        upper = get_upper_lims(d.meandrina.adult$temp, d.meandrina.adult$rate, model_name = 'sharpeschoolhigh_1981')+1,
+                        weights = rep(1, times = nrow(d.meandrina.adult)))
+
+# bootstrap using case resampling
+adult.meandrina.boot1 <- Boot(adult.meandrina.fit_nlsLM, method = 'case')
+
+# look at the data
+head(adult.meandrina.boot1$t)
+
+
+# create predictions of each bootstrapped model
+adult.meandrina.boot1_preds <- adult.meandrina.boot1$t %>%
+  as.data.frame() %>%
+  drop_na() %>%
+  mutate(iter = 1:n()) %>%
+  group_by_all() %>%
+  do(data.frame(temp = seq(min(d.meandrina.adult$temp), max(d.meandrina.adult$temp), length.out = 100))) %>%
+  ungroup() %>%
+  mutate(pred = sharpeschoolhigh_1981(temp, r_tref, e, eh, th, tref = 28))
+
+# calculate bootstrapped confidence intervals
+adult.meandrina.boot1_conf_preds <- group_by(adult.meandrina.boot1_preds, temp) %>%
+  summarise(conf_lower = quantile(pred, 0.025),
+            conf_upper = quantile(pred, 0.975)) %>%
+  ungroup()
+
+# plot bootstrapped CIs
+adult.meandrina.CI.plot <- ggplot() +
+  geom_line(aes(temp, .fitted), adult.meandrina.preds, col = 'orange') +
+  geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper), adult.meandrina.boot1_conf_preds, fill = 'orange', alpha = 0.3) +
+  geom_point(aes(temp, rate), d.meandrina.adult, size = 2, alpha = 0.5,col = 'orange') +
+  theme_bw(base_size = 12) +
+  labs(x = 'Temperature (ºC)',
+       y = 'Rate (µmol O2/cm2/h)')
+adult.meandrina.CI.plot
+
+```
+P meandrina recruit
+```{r}
+# meandrina CURVE FIT
+# P. meandrina
+d.meandrina.recruit <- d %>% 
+  filter(Stage == "Recruit")
+
+#fit 
+recruit.meandrina.fit <- nls_multstart(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                        data = d.meandrina.recruit,
+                        iter = c(3,3,3,3),
+                        start_lower = get_start_vals(d.meandrina.recruit$temp, d.meandrina.recruit$rate, model_name = 'sharpeschoolhigh_1981') - 1,
+                        start_upper = get_start_vals(d.meandrina.recruit$temp, d.meandrina.recruit$rate, model_name = 'sharpeschoolhigh_1981') + 1,
+                        lower = get_lower_lims(d.meandrina.recruit$temp, d.meandrina.recruit$rate, model_name = 'sharpeschoolhigh_1981'),
+                        upper = get_upper_lims(d.meandrina.recruit$temp, d.meandrina.recruit$rate, model_name = 'sharpeschoolhigh_1981'),
+                        supp_errors = 'Y',
+                        convergence_count = FALSE)
+
+recruit.meandrina.fit
+
+#generate the predicted data
+recruit_meandrina_new_data <- data.frame(temp = seq(min(d.meandrina.recruit$temp), max(d.meandrina.recruit$temp), 0.5))
+recruit.meandrina.preds <- augment(recruit.meandrina.fit, newdata = recruit_meandrina_new_data)
+
+#calculate TPC parameters
+recruit.meandrina.TCP.res <- calc_params(recruit.meandrina.fit) %>%
+  mutate_all(round, 2)   # round 
+
+recruit.meandrina.TCP.res
+
+### Bootstrapping  curve fit    
+# refit model using nlsLM
+recruit.meandrina.fit_nlsLM <- minpack.lm::nlsLM(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                        data = d.meandrina.recruit,
+                        start = coef(recruit.meandrina.fit),
+                        lower = get_lower_lims(d.meandrina.recruit$temp, d.meandrina.recruit$rate, model_name = 'sharpeschoolhigh_1981')-1,
+                        upper = get_upper_lims(d.meandrina.recruit$temp, d.meandrina.recruit$rate, model_name = 'sharpeschoolhigh_1981')+1,
+                        weights = rep(1, times = nrow(d.meandrina.recruit)))
+
+# bootstrap using case resampling
+recruit.meandrina.boot1 <- Boot(recruit.meandrina.fit_nlsLM, method = 'case')
+
+# look at the data
+head(recruit.meandrina.boot1$t)
+
+
+# create predictions of each bootstrapped model
+recruit.meandrina.boot1_preds <- recruit.meandrina.boot1$t %>%
+  as.data.frame() %>%
+  drop_na() %>%
+  mutate(iter = 1:n()) %>%
+  group_by_all() %>%
+  do(data.frame(temp = seq(min(d.meandrina.recruit$temp), max(d.meandrina.recruit$temp), length.out = 100))) %>%
+  ungroup() %>%
+  mutate(pred = sharpeschoolhigh_1981(temp, r_tref, e, eh, th, tref = 28))
+
+# calculate bootstrapped confidence intervals
+recruit.meandrina.boot1_conf_preds <- group_by(recruit.meandrina.boot1_preds, temp) %>%
+  summarise(conf_lower = quantile(pred, 0.025),
+            conf_upper = quantile(pred, 0.975)) %>%
+  ungroup()
+
+# plot bootstrapped CIs
+recruit.meandrina.CI.plot <- ggplot() +
+  geom_line(aes(temp, .fitted), recruit.meandrina.preds, col = 'red') +
+  geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper), recruit.meandrina.boot1_conf_preds, fill = 'red', alpha = 0.3) +
+  geom_point(aes(temp, rate), d.meandrina.recruit, size = 2, alpha = 0.5,col = 'red') +
+  theme_bw(base_size = 12) +
+  labs(x = 'Temperature (ºC)',
+       y = 'Rate (µmol O2/cm2/h)')
+recruit.meandrina.CI.plot
+
+```
+
+
+
+```{r}
+ #set plot colors
+cols <- c("Adult"="orange",  "Recruit"="red")
+  
+# plot data and model fit
+PM.TPC.plot <- ggplot(data=d, aes(x=temp)) +
+   geom_point(aes(temp, rate, color="Adult"), d.meandrina.adult, size = 2, alpha = 0.5) +
+   geom_point(aes(temp, rate, color="Recruit"), d.meandrina.recruit, size = 2, alpha = 0.5) +
+   geom_line(aes(temp, .fitted), adult.meandrina.preds, col = 'orange', size=2) +
+   geom_line(aes(temp, .fitted), recruit.meandrina.preds, col = "red", size=2) +
+  geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper), adult.meandrina.boot1_conf_preds, fill = "orange", alpha = 0.3) +
+  geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper), recruit.meandrina.boot1_conf_preds, fill = "red", alpha = 0.3) +
+   xlim(16,41)+
+  #ylim(0,0.45)+
+   scale_x_continuous(breaks=c(16,22,24,26,28,30,32,34,36,41))+
+   theme_bw(base_size = 12) +
+   scale_colour_manual(name="Stage",values=cols)+
+   theme(legend.position = "none",
+         panel.border = element_blank(), panel.grid.major = element_blank(),
+         panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+   labs(x = 'Temperature (ºC)',
+        y = expression("Rate"~µmol~O[2] ~cm^{-2}~h^{-1}))
+
+PM.TPC.plot 
+```
+
+# Bootstrap CI for all TPC parameters
+```{r}
+broom::tidy(adult.meandrina.fit_nlsLM)
+broom::tidy(recruit.meandrina.fit_nlsLM)
+
+```
+
+
+#meandrina adults
+```{r}
+#calculate all the TPC parameters
+adult.meandrina.extra_params <- calc_params(adult.meandrina.fit_nlsLM) %>%
+  pivot_longer(everything(), names_to =  'param', values_to = 'estimate')
+
+#calculate CIs for all the TPC parameters
+adult.meandrina.ci_extra_params <- Boot(adult.meandrina.fit_nlsLM, f = function(x){unlist(calc_params(x))}, labels = names(calc_params(adult.meandrina.fit_nlsLM)), R = 200, method = 'case') %>%
+  confint(., method = 'perc') %>%
+  as.data.frame() %>%
+  rename(conf_lower = 1, conf_upper = 2) %>%
+  rownames_to_column(., var = 'param') %>%
+  mutate(method = 'case bootstrap')
+
+#join the parameters and CIs  
+adult.meandrina.ci_extra_params<- left_join(adult.meandrina.ci_extra_params, adult.meandrina.extra_params)
+adult.meandrina.ci_extra_params$Stage <- "Adult"
+```
+
+#meandrina recruit
+```{r}
+#calculate all the TPC parameters
+recruit.meandrina.extra_params <- calc_params(recruit.meandrina.fit_nlsLM) %>%
+  pivot_longer(everything(), names_to =  'param', values_to = 'estimate')
+
+#calculate CIs for all the TPC parameters
+recruit.meandrina.ci_extra_params <- Boot(recruit.meandrina.fit_nlsLM, f = function(x){unlist(calc_params(x))}, labels = names(calc_params(recruit.meandrina.fit_nlsLM)), R = 200, method = 'case') %>%
+  confint(., method = 'perc') %>%
+  as.data.frame() %>%
+  rename(conf_lower = 1, conf_upper = 2) %>%
+  rownames_to_column(., var = 'param') %>%
+  mutate(method = 'case bootstrap')
+
+#join the parameters and CIs  
+recruit.meandrina.ci_extra_params<- left_join(recruit.meandrina.ci_extra_params, recruit.meandrina.extra_params)
+recruit.meandrina.ci_extra_params$Stage <- "Recruit"
+```
+
+
+#Join Species estimates and CIs
+```{r}
+All_params <- rbind(adult.meandrina.ci_extra_params, recruit.meandrina.ci_extra_params)
+All_params <- All_params %>% 
+ mutate_if(is.numeric, round, 2)
+
+#Plot all of the estimates
+estimate.plots <- ggplot(All_params, aes(Stage, estimate, color=Stage)) +
+  geom_point(size = 2) +
+  scale_color_manual(name="Stage", values=c("orange", "red"))+
+  geom_linerange(aes(ymin = conf_lower, ymax = conf_upper)) +
+  theme_bw() +
+  facet_wrap(~param, scales = 'free_y') +
+  scale_x_discrete('')
+
+estimate.plots
+
+# #filter to only the most relavent and well characterized parameters
+ All_params <- All_params %>% 
+   filter(!param=="ctmin") %>%
+#   filter(!param=="ctmax") %>%
+#   filter(!param=="eh") %>%
+#   filter(!param=="rmax") %>%
+   filter(!param=="skewness") %>%
+#   filter(!param=="topt") %>%
+   filter(!param=="thermal_tolerance") #%>%
+#   filter(!param=="q10") %>%
+#   filter(!param=="e") %>%
+#   filter(!param=="breadth")%>%
+#   filter(!param=="thermal_safety_margin")
+  
+#Plot selected  estimates
+estimate.plots <- ggplot(All_params, aes(Stage, estimate, color=Stage)) +
+  geom_point(size = 2) +
+  scale_color_manual(name="Stage", values=c("orange", "red"))+
+  geom_linerange(aes(ymin = conf_lower, ymax = conf_upper)) +
+  theme_bw() +
+  facet_wrap(~param, scales = 'free_y') +
+  scale_x_discrete('')
+
+estimate.plots
+
+```
+
+#Plot Curve and Estimate Output
+```{r}
+#generate a combined figure of TPCs and estimate plots
+figure <- ggarrange(PM.TPC.plot , estimate.plots,
+                    hjust = c(.01,.01),
+                    vjust = c(1.2,.01),
+                    labels = c("A) Rdark", "B) BootStrap TPC Estimates"),
+                    ncol = 1, nrow = 2,
+                    heights=c(1,0.5))
+figure
+
+ggsave("output/Pmeandrina_Rdark_TPC_and_estimates.pdf", figure, dpi=300, w=6, h=8, units="in")
+ggsave("output/Pmeandrina_Rdark_TPC_and_estimates.jpg", figure, dpi=300, w=6, h=8, units="in")
+
+```
+
+All Species Adults
+```{r}
+data3 <- data.0 %>% 
+  filter(Stage=="Adult")
+
+data3$group <- paste0(data3$colony_id, data3$Temperature)
+
+data3$check <- paste0(data3$colony_id, data3$Temperature, data3$Light)
+
+data3<- data3 %>%
+  distinct(check, .keep_all = TRUE)
+
+data.light3 <- data3 %>%
+  filter(Light==560) 
+
+data.dark3 <- data3 %>%
+  filter(Light==0) 
+
+data4 <- left_join(data.light3, data.dark3, by = "group") %>%
+  select(Species = Species.x, 
+         colony_id = colony_id.x, 
+         temp = avg_temp_interval.x, 
+         temp_dark = avg_temp_interval.y, 
+         Stage = Stage.x, 
+         Pnet = micromol.cm2.h.x, 
+         Rdark = micromol.cm2.h.y)
+
+data4$Pgross <- data4$Pnet- data4$Rdark
+
+data4$Rdark <- -data4$Rdark
+data4$Rdark <- replace(data4$Rdark, data4$Rdark<0,0)
+
+data4 %>% 
+  filter(Species=="P. verrucosa") %>%
+ggplot(aes(x=temp, y=Pgross, color=Species, group=colony_id))+ 
+  geom_point()+
+  geom_line()+
+  ylab("Pgross µmol O2 cm^2 h-1")+
+  facet_wrap(~ colony_id,  ncol = 6)+
+  theme(legend.position = "none")
+
+
+data4 %>% 
+ggplot(aes(x=temp_dark, y=Rdark, color=Species, group=colony_id))+ 
+  geom_point()+
+  geom_line()+
+  ylab("Rdark µmol O2 cm^2 h-1")+
+  facet_wrap(~ Species,  ncol = 6)+
+  theme(legend.position = "none")
+
+
+```
+Pgross
+
+# P. grandis Adult Curve fitting
+```{r}
+# grandis CURVE FIT
+# P. grandis
+d.grandis.adult <- data4 %>% 
+  filter(Species == "P. grandis")
+
+colnames(d.grandis.adult) <-c("Species", "colony_id", "temp", "temp_dark", "Stage", "Pnet",
+                                "Rdark",  "rate")
+
+#fit 
+adult.grandis.fit <- nls_multstart(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                        data = d.grandis.adult,
+                        iter = c(3,3,3,3),
+                        start_lower = get_start_vals(d.grandis.adult$temp, d.grandis.adult$rate, model_name = 'sharpeschoolhigh_1981') - 1,
+                        start_upper = get_start_vals(d.grandis.adult$temp, d.grandis.adult$rate, model_name = 'sharpeschoolhigh_1981') + 1,
+                        lower = get_lower_lims(d.grandis.adult$temp, d.grandis.adult$rate, model_name = 'sharpeschoolhigh_1981'),
+                        upper = get_upper_lims(d.grandis.adult$temp, d.grandis.adult$rate, model_name = 'sharpeschoolhigh_1981'),
+                        supp_errors = 'Y',
+                        convergence_count = FALSE)
+
+adult.grandis.fit
+
+#generate the predicted data
+adult_grandis_new_data <- data.frame(temp = seq(min(d.grandis.adult$temp), max(d.grandis.adult$temp), 0.5))
+adult.grandis.preds <- augment(adult.grandis.fit, newdata = adult_grandis_new_data)
+
+#calculate TPC parameters
+adult.grandis.TCP.res <- calc_params(adult.grandis.fit) %>%
+  mutate_all(round, 2)   # round 
+
+adult.grandis.TCP.res
+
+### Bootstrapping  curve fit    
+# refit model using nlsLM
+adult.grandis.fit_nlsLM <- minpack.lm::nlsLM(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                        data = d.grandis.adult,
+                        start = coef(adult.grandis.fit),
+                        lower = get_lower_lims(d.grandis.adult$temp, d.grandis.adult$rate, model_name = 'sharpeschoolhigh_1981')-1,
+                        upper = get_upper_lims(d.grandis.adult$temp, d.grandis.adult$rate, model_name = 'sharpeschoolhigh_1981')+1,
+                        weights = rep(1, times = nrow(d.grandis.adult)))
+
+# bootstrap using case resampling
+adult.grandis.boot1 <- Boot(adult.grandis.fit_nlsLM, method = 'case')
+
+# look at the data
+head(adult.grandis.boot1$t)
+
+
+# create predictions of each bootstrapped model
+adult.grandis.boot1_preds <- adult.grandis.boot1$t %>%
+  as.data.frame() %>%
+  drop_na() %>%
+  mutate(iter = 1:n()) %>%
+  group_by_all() %>%
+  do(data.frame(temp = seq(min(d.grandis.adult$temp), max(d.grandis.adult$temp), length.out = 100))) %>%
+  ungroup() %>%
+  mutate(pred = sharpeschoolhigh_1981(temp, r_tref, e, eh, th, tref = 28))
+
+# calculate bootstrapped confidence intervals
+adult.grandis.boot1_conf_preds <- group_by(adult.grandis.boot1_preds, temp) %>%
+  summarise(conf_lower = quantile(pred, 0.025),
+            conf_upper = quantile(pred, 0.975)) %>%
+  ungroup()
+
+# plot bootstrapped CIs
+adult.grandis.CI.plot <- ggplot() +
+  geom_line(aes(temp, .fitted), adult.grandis.preds, col = '#56B4E9') +
+  geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper), adult.grandis.boot1_conf_preds, fill = '#56B4E9', alpha = 0.3) +
+  geom_point(aes(temp, rate), d.grandis.adult, size = 2, alpha = 0.5,col = '#56B4E9') +
+  theme_bw(base_size = 12) +
+  labs(x = 'Temperature (ºC)',
+       y = 'Rate (µmol O2/cm2/h)')
+adult.grandis.CI.plot
+
+```
+
+# P. meandrina Adult Curve fitting
+```{r}
+# meandrina CURVE FIT
+# P. meandrina
+d.meandrina.adult <- data4 %>% 
+  filter(Species == "P. meandrina")
+
+colnames(d.meandrina.adult) <-c("Species", "colony_id", "temp", "temp_dark", "Stage", "Pnet",
+                                "Rdark",  "rate")
+
+#fit 
+adult.meandrina.fit <- nls_multstart(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                        data = d.meandrina.adult,
+                        iter = c(3,3,3,3),
+                        start_lower = get_start_vals(d.meandrina.adult$temp, d.meandrina.adult$rate, model_name = 'sharpeschoolhigh_1981') - 1,
+                        start_upper = get_start_vals(d.meandrina.adult$temp, d.meandrina.adult$rate, model_name = 'sharpeschoolhigh_1981') + 1,
+                        lower = get_lower_lims(d.meandrina.adult$temp, d.meandrina.adult$rate, model_name = 'sharpeschoolhigh_1981'),
+                        upper = get_upper_lims(d.meandrina.adult$temp, d.meandrina.adult$rate, model_name = 'sharpeschoolhigh_1981'),
+                        supp_errors = 'Y',
+                        convergence_count = FALSE)
+
+adult.meandrina.fit
+
+#generate the predicted data
+adult_meandrina_new_data <- data.frame(temp = seq(min(d.meandrina.adult$temp), max(d.meandrina.adult$temp), 0.5))
+adult.meandrina.preds <- augment(adult.meandrina.fit, newdata = adult_meandrina_new_data)
+
+#calculate TPC parameters
+adult.meandrina.TCP.res <- calc_params(adult.meandrina.fit) %>%
+  mutate_all(round, 2)   # round 
+
+adult.meandrina.TCP.res
+
+### Bootstrapping  curve fit    
+# refit model using nlsLM
+adult.meandrina.fit_nlsLM <- minpack.lm::nlsLM(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                        data = d.meandrina.adult,
+                        start = coef(adult.meandrina.fit),
+                        lower = get_lower_lims(d.meandrina.adult$temp, d.meandrina.adult$rate, model_name = 'sharpeschoolhigh_1981')-1,
+                        upper = get_upper_lims(d.meandrina.adult$temp, d.meandrina.adult$rate, model_name = 'sharpeschoolhigh_1981')+1,
+                        weights = rep(1, times = nrow(d.meandrina.adult)))
+
+# bootstrap using case resampling
+adult.meandrina.boot1 <- Boot(adult.meandrina.fit_nlsLM, method = 'case')
+
+# look at the data
+head(adult.meandrina.boot1$t)
+
+
+# create predictions of each bootstrapped model
+adult.meandrina.boot1_preds <- adult.meandrina.boot1$t %>%
+  as.data.frame() %>%
+  drop_na() %>%
+  mutate(iter = 1:n()) %>%
+  group_by_all() %>%
+  do(data.frame(temp = seq(min(d.meandrina.adult$temp), max(d.meandrina.adult$temp), length.out = 100))) %>%
+  ungroup() %>%
+  mutate(pred = sharpeschoolhigh_1981(temp, r_tref, e, eh, th, tref = 28))
+
+# calculate bootstrapped confidence intervals
+adult.meandrina.boot1_conf_preds <- group_by(adult.meandrina.boot1_preds, temp) %>%
+  summarise(conf_lower = quantile(pred, 0.025),
+            conf_upper = quantile(pred, 0.975)) %>%
+  ungroup()
+
+# plot bootstrapped CIs
+adult.meandrina.CI.plot <- ggplot() +
+  geom_line(aes(temp, .fitted), adult.meandrina.preds, col = '#0072B2') +
+  geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper), adult.meandrina.boot1_conf_preds, fill = '#0072B2', alpha = 0.3) +
+  geom_point(aes(temp, rate), d.meandrina.adult, size = 2, alpha = 0.5,col = '#0072B2') +
+  theme_bw(base_size = 12) +
+  labs(x = 'Temperature (ºC)',
+       y = 'Rate (µmol O2/cm2/h)')
+adult.meandrina.CI.plot
+
+```
+
+# P. tuahiniensis Adult Curve fitting
+```{r}
+# tuahiniensis CURVE FIT
+# P. tuahiniensis
+d.tuahiniensis.adult <- data4 %>% 
+  filter(Species == "P. tuahiniensis")
+
+colnames(d.tuahiniensis.adult) <-c("Species", "colony_id", "temp", "temp_dark", "Stage", "Pnet",
+                                "Rdark",  "rate")
+
+#fit 
+adult.tuahiniensis.fit <- nls_multstart(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                        data = d.tuahiniensis.adult,
+                        iter = c(3,3,3,3),
+                        start_lower = get_start_vals(d.tuahiniensis.adult$temp, d.tuahiniensis.adult$rate, model_name = 'sharpeschoolhigh_1981') - 1,
+                        start_upper = get_start_vals(d.tuahiniensis.adult$temp, d.tuahiniensis.adult$rate, model_name = 'sharpeschoolhigh_1981') + 1,
+                        lower = get_lower_lims(d.tuahiniensis.adult$temp, d.tuahiniensis.adult$rate, model_name = 'sharpeschoolhigh_1981'),
+                        upper = get_upper_lims(d.tuahiniensis.adult$temp, d.tuahiniensis.adult$rate, model_name = 'sharpeschoolhigh_1981'),
+                        supp_errors = 'Y',
+                        convergence_count = FALSE)
+
+adult.tuahiniensis.fit
+
+#generate the predicted data
+adult_tuahiniensis_new_data <- data.frame(temp = seq(min(d.tuahiniensis.adult$temp), max(d.tuahiniensis.adult$temp), 0.5))
+adult.tuahiniensis.preds <- augment(adult.tuahiniensis.fit, newdata = adult_tuahiniensis_new_data)
+
+#calculate TPC parameters
+adult.tuahiniensis.TCP.res <- calc_params(adult.tuahiniensis.fit) %>%
+  mutate_all(round, 2)   # round 
+
+adult.tuahiniensis.TCP.res
+
+### Bootstrapping  curve fit    
+# refit model using nlsLM
+adult.tuahiniensis.fit_nlsLM <- minpack.lm::nlsLM(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                        data = d.tuahiniensis.adult,
+                        start = coef(adult.tuahiniensis.fit),
+                        lower = get_lower_lims(d.tuahiniensis.adult$temp, d.tuahiniensis.adult$rate, model_name = 'sharpeschoolhigh_1981')-1,
+                        upper = get_upper_lims(d.tuahiniensis.adult$temp, d.tuahiniensis.adult$rate, model_name = 'sharpeschoolhigh_1981')+1,
+                        weights = rep(1, times = nrow(d.tuahiniensis.adult)))
+
+# bootstrap using case resampling
+adult.tuahiniensis.boot1 <- Boot(adult.tuahiniensis.fit_nlsLM, method = 'case')
+
+# look at the data
+head(adult.tuahiniensis.boot1$t)
+
+
+# create predictions of each bootstrapped model
+adult.tuahiniensis.boot1_preds <- adult.tuahiniensis.boot1$t %>%
+  as.data.frame() %>%
+  drop_na() %>%
+  mutate(iter = 1:n()) %>%
+  group_by_all() %>%
+  do(data.frame(temp = seq(min(d.tuahiniensis.adult$temp), max(d.tuahiniensis.adult$temp), length.out = 100))) %>%
+  ungroup() %>%
+  mutate(pred = sharpeschoolhigh_1981(temp, r_tref, e, eh, th, tref = 28))
+
+# calculate bootstrapped confidence intervals
+adult.tuahiniensis.boot1_conf_preds <- group_by(adult.tuahiniensis.boot1_preds, temp) %>%
+  summarise(conf_lower = quantile(pred, 0.025),
+            conf_upper = quantile(pred, 0.975)) %>%
+  ungroup()
+
+# plot bootstrapped CIs
+adult.tuahiniensis.CI.plot <- ggplot() +
+  geom_line(aes(temp, .fitted), adult.tuahiniensis.preds, col = '#D55E00') +
+  geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper), adult.tuahiniensis.boot1_conf_preds, fill = '#D55E00', alpha = 0.3) +
+  geom_point(aes(temp, rate), d.tuahiniensis.adult, size = 2, alpha = 0.5,col = '#D55E00') +
+  theme_bw(base_size = 12) +
+  labs(x = 'Temperature (ºC)',
+       y = 'Rate (µmol O2/cm2/h)')
+adult.tuahiniensis.CI.plot
+
+```
+
+
+# P. verrucosa Adult Curve fitting
+```{r}
+# verrucosa CURVE FIT
+# P. verrucosa
+d.verrucosa.adult <- data4 %>% 
+  filter(Species == "P. verrucosa")
+
+colnames(d.verrucosa.adult) <-c("Species", "colony_id", "temp", "temp_dark", "Stage", "Pnet",
+                                "Rdark",  "rate")
+
+#fit 
+adult.verrucosa.fit <- nls_multstart(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                        data = d.verrucosa.adult,
+                        iter = c(3,3,3,3),
+                        start_lower = get_start_vals(d.verrucosa.adult$temp, d.verrucosa.adult$rate, model_name = 'sharpeschoolhigh_1981') - 1,
+                        start_upper = get_start_vals(d.verrucosa.adult$temp, d.verrucosa.adult$rate, model_name = 'sharpeschoolhigh_1981') + 1,
+                        lower = get_lower_lims(d.verrucosa.adult$temp, d.verrucosa.adult$rate, model_name = 'sharpeschoolhigh_1981'),
+                        upper = get_upper_lims(d.verrucosa.adult$temp, d.verrucosa.adult$rate, model_name = 'sharpeschoolhigh_1981'),
+                        supp_errors = 'Y',
+                        convergence_count = FALSE)
+
+adult.verrucosa.fit
+
+#generate the predicted data
+adult_verrucosa_new_data <- data.frame(temp = seq(min(d.verrucosa.adult$temp), max(d.verrucosa.adult$temp), 0.5))
+adult.verrucosa.preds <- augment(adult.verrucosa.fit, newdata = adult_verrucosa_new_data)
+
+#calculate TPC parameters
+adult.verrucosa.TCP.res <- calc_params(adult.verrucosa.fit) %>%
+  mutate_all(round, 2)   # round 
+
+adult.verrucosa.TCP.res
+
+### Bootstrapping  curve fit    
+# refit model using nlsLM
+adult.verrucosa.fit_nlsLM <- minpack.lm::nlsLM(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                        data = d.verrucosa.adult,
+                        start = coef(adult.verrucosa.fit),
+                        lower = get_lower_lims(d.verrucosa.adult$temp, d.verrucosa.adult$rate, model_name = 'sharpeschoolhigh_1981')-1,
+                        upper = get_upper_lims(d.verrucosa.adult$temp, d.verrucosa.adult$rate, model_name = 'sharpeschoolhigh_1981')+1,
+                        weights = rep(1, times = nrow(d.verrucosa.adult)))
+
+# bootstrap using case resampling
+adult.verrucosa.boot1 <- Boot(adult.verrucosa.fit_nlsLM, method = 'case')
+
+# look at the data
+head(adult.verrucosa.boot1$t)
+
+
+# create predictions of each bootstrapped model
+adult.verrucosa.boot1_preds <- adult.verrucosa.boot1$t %>%
+  as.data.frame() %>%
+  drop_na() %>%
+  mutate(iter = 1:n()) %>%
+  group_by_all() %>%
+  do(data.frame(temp = seq(min(d.verrucosa.adult$temp), max(d.verrucosa.adult$temp), length.out = 100))) %>%
+  ungroup() %>%
+  mutate(pred = sharpeschoolhigh_1981(temp, r_tref, e, eh, th, tref = 28))
+
+# calculate bootstrapped confidence intervals
+adult.verrucosa.boot1_conf_preds <- group_by(adult.verrucosa.boot1_preds, temp) %>%
+  summarise(conf_lower = quantile(pred, 0.025),
+            conf_upper = quantile(pred, 0.975)) %>%
+  ungroup()
+
+# plot bootstrapped CIs
+adult.verrucosa.CI.plot <- ggplot() +
+  geom_line(aes(temp, .fitted), adult.verrucosa.preds, col = '#E69F00') +
+  geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper), adult.verrucosa.boot1_conf_preds, fill = '#E69F00', alpha = 0.3) +
+  geom_point(aes(temp, rate), d.verrucosa.adult, size = 2, alpha = 0.5,col = '#E69F00') +
+  theme_bw(base_size = 12) +
+  labs(x = 'Temperature (ºC)',
+       y = 'Rate (µmol O2/cm2/h)')
+adult.verrucosa.CI.plot
+
+```
+
+```{r}
+ #set plot colors
+# set the colors for plotting
+cols <- cbind.data.frame(Species = factor(c("P. tuahiniensis",
+                                            "P. meandrina",
+                                            "P. verrucosa",
+                                            "P. grandis",
+                                            "P. cf. effusa",
+                                            "P. acuta")),
+                         Color = c("#D55E00",
+                                   "#0072B2",
+                                   "#E69F00",
+                                   "#56B4E9",
+                                   "#009E73",
+                                   "#e63946"))
+  
+# plot data and model fit
+PM.TPC.plot <- ggplot(data=data4, aes(x=temp)) +
+   geom_point(aes(temp, rate, color="P. grandis"), d.grandis.adult, col = '#56B4E9',size = 2) +
+   geom_point(aes(temp, rate, color="P. meandrina"), d.meandrina.adult, col = '#0072B2', size = 2) +
+   geom_point(aes(temp, rate, color="P. tuahiniensis"), d.tuahiniensis.adult, col = '#D55E00',  size = 2) +
+   geom_point(aes(temp, rate, color="P. verrucosa"), d.meandrina.adult, col = '#E69F00', size = 2) +
+   geom_line(aes(temp, .fitted), adult.grandis.preds, col = '#56B4E9', size=2) +
+   geom_line(aes(temp, .fitted), adult.meandrina.preds, col = '#0072B2', size=2) +
+   geom_line(aes(temp, .fitted), adult.tuahiniensis.preds, col = '#D55E00', size=2) +
+   geom_line(aes(temp, .fitted), adult.verrucosa.preds, col = '#E69F00', size=2) +
+   geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper), adult.grandis.boot1_conf_preds, fill = "#56B4E9", alpha = 0.3) +
+  geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper), adult.meandrina.boot1_conf_preds, fill = "#0072B2", alpha = 0.3) +
+  geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper), adult.tuahiniensis.boot1_conf_preds, fill = "#D55E00", alpha = 0.3) +
+  geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper), adult.verrucosa.boot1_conf_preds, fill = "#E69F00", alpha = 0.3) +
+
+   xlim(16,41)+
+  #ylim(0,0.45)+
+   scale_x_continuous(breaks=c(16,22,24,26,28,30,32,34,36,41))+
+   theme_bw(base_size = 12) +
+   scale_colour_manual(name="Species",values=cols)+
+   theme(legend.position = "none",
+         panel.border = element_blank(), panel.grid.major = element_blank(),
+         panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+   labs(x = 'Temperature (ºC)',
+        y = expression("Rate"~µmol~O[2] ~cm^{-2}~h^{-1}))
+
+PM.TPC.plot 
+```
+
+
+# Bootstrap CI for all TPC parameters
+```{r}
+broom::tidy(adult.grandis.fit_nlsLM)
+broom::tidy(adult.meandrina.fit_nlsLM)
+broom::tidy(adult.tuahiniensis.fit_nlsLM)
+broom::tidy(adult.verrucosa.fit_nlsLM)
+
+```
+
+
+#grandis adults
+```{r}
+#calculate all the TPC parameters
+adult.grandis.extra_params <- calc_params(adult.grandis.fit_nlsLM) %>%
+  pivot_longer(everything(), names_to =  'param', values_to = 'estimate')
+
+#calculate CIs for all the TPC parameters
+adult.grandis.ci_extra_params <- Boot(adult.grandis.fit_nlsLM, f = function(x){unlist(calc_params(x))}, labels = names(calc_params(adult.grandis.fit_nlsLM)), R = 200, method = 'case') %>%
+  confint(., method = 'perc') %>%
+  as.data.frame() %>%
+  rename(conf_lower = 1, conf_upper = 2) %>%
+  rownames_to_column(., var = 'param') %>%
+  mutate(method = 'case bootstrap')
+
+#join the parameters and CIs  
+adult.grandis.ci_extra_params<- left_join(adult.grandis.ci_extra_params, adult.grandis.extra_params)
+adult.grandis.ci_extra_params$Species <- "P. grandis"
+```
+
+#meandrina adults
+```{r}
+#calculate all the TPC parameters
+adult.meandrina.extra_params <- calc_params(adult.meandrina.fit_nlsLM) %>%
+  pivot_longer(everything(), names_to =  'param', values_to = 'estimate')
+
+#calculate CIs for all the TPC parameters
+adult.meandrina.ci_extra_params <- Boot(adult.meandrina.fit_nlsLM, f = function(x){unlist(calc_params(x))}, labels = names(calc_params(adult.meandrina.fit_nlsLM)), R = 200, method = 'case') %>%
+  confint(., method = 'perc') %>%
+  as.data.frame() %>%
+  rename(conf_lower = 1, conf_upper = 2) %>%
+  rownames_to_column(., var = 'param') %>%
+  mutate(method = 'case bootstrap')
+
+#join the parameters and CIs  
+adult.meandrina.ci_extra_params<- left_join(adult.meandrina.ci_extra_params, adult.meandrina.extra_params)
+adult.meandrina.ci_extra_params$Species <- "P. meandrina"
+```
+
+#tuahiniensis adults
+```{r}
+#calculate all the TPC parameters
+adult.tuahiniensis.extra_params <- calc_params(adult.tuahiniensis.fit_nlsLM) %>%
+  pivot_longer(everything(), names_to =  'param', values_to = 'estimate')
+
+#calculate CIs for all the TPC parameters
+adult.tuahiniensis.ci_extra_params <- Boot(adult.tuahiniensis.fit_nlsLM, f = function(x){unlist(calc_params(x))}, labels = names(calc_params(adult.tuahiniensis.fit_nlsLM)), R = 200, method = 'case') %>%
+  confint(., method = 'perc') %>%
+  as.data.frame() %>%
+  rename(conf_lower = 1, conf_upper = 2) %>%
+  rownames_to_column(., var = 'param') %>%
+  mutate(method = 'case bootstrap')
+
+#join the parameters and CIs  
+adult.tuahiniensis.ci_extra_params<- left_join(adult.tuahiniensis.ci_extra_params, adult.tuahiniensis.extra_params)
+adult.tuahiniensis.ci_extra_params$Species <- "P. tuahiniensis"
+```
+
+#verrucosa adults
+```{r}
+#calculate all the TPC parameters
+adult.verrucosa.extra_params <- calc_params(adult.verrucosa.fit_nlsLM) %>%
+  pivot_longer(everything(), names_to =  'param', values_to = 'estimate')
+
+#calculate CIs for all the TPC parameters
+adult.verrucosa.ci_extra_params <- Boot(adult.verrucosa.fit_nlsLM, f = function(x){unlist(calc_params(x))}, labels = names(calc_params(adult.verrucosa.fit_nlsLM)), R = 200, method = 'case') %>%
+  confint(., method = 'perc') %>%
+  as.data.frame() %>%
+  rename(conf_lower = 1, conf_upper = 2) %>%
+  rownames_to_column(., var = 'param') %>%
+  mutate(method = 'case bootstrap')
+
+#join the parameters and CIs  
+adult.verrucosa.ci_extra_params<- left_join(adult.verrucosa.ci_extra_params, adult.verrucosa.extra_params)
+adult.verrucosa.ci_extra_params$Species <- "P. verrucosa"
+```
+
+#Join Species estimates and CIs
+```{r}
+All_params <- rbind(adult.grandis.ci_extra_params, adult.meandrina.ci_extra_params,
+                    adult.tuahiniensis.ci_extra_params, adult.verrucosa.ci_extra_params)
+All_params <- All_params %>% 
+ mutate_if(is.numeric, round, 2)
+
+
+
+#Plot all of the estimates
+estimate.plots <- ggplot(All_params, aes(Species, estimate, color=Species)) +
+  geom_point(size = 2) +
+  scale_color_manual(name="Species", values=c("#56B4E9","#0072B2","#D55E00","#E69F00"))+
+  geom_linerange(aes(ymin = conf_lower, ymax = conf_upper)) +
+  theme_bw() +
+  facet_wrap(~param, scales = 'free_y') +
+  scale_x_discrete('')
+
+estimate.plots
+
+# #filter to only the most relavent and well characterized parameters
+ All_params <- All_params %>% 
+   filter(!param=="ctmin") %>%
+#   filter(!param=="ctmax") %>%
+#   filter(!param=="eh") %>%
+#   filter(!param=="rmax") %>%
+   filter(!param=="skewness") %>%
+#   filter(!param=="topt") %>%
+   filter(!param=="thermal_tolerance") #%>%
+#   filter(!param=="q10") %>%
+#   filter(!param=="e") %>%
+#   filter(!param=="breadth")%>%
+#   filter(!param=="thermal_safety_margin")
+  
+#Plot selected  estimates
+estimate.plots <- ggplot(All_params, aes(Species, estimate, color=Species)) +
+  geom_point(size = 2) +
+  scale_color_manual(name="Species", values=c("#56B4E9","#0072B2","#D55E00","#E69F00"))+
+  geom_linerange(aes(ymin = conf_lower, ymax = conf_upper)) +
+  theme_bw() +
+  facet_wrap(~param, scales = 'free_y') +
+  scale_x_discrete('')+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+estimate.plots
+
+```
+
+#Plot Curve and Estimate Output
+```{r}
+#generate a combined figure of TPCs and estimate plots
+figure <- ggarrange(PM.TPC.plot , estimate.plots,
+                    hjust = c(.01,.01),
+                    vjust = c(1.2,.01),
+                    labels = c("A) Pgross", "B) BootStrap TPC Estimates"),
+                    ncol = 1, nrow = 2,
+                    heights=c(1,1))
+figure
+
+ggsave("output/AllSpecies_Pgross_TPC_and_estimates.pdf", figure, dpi=300, w=6, h=8, units="in")
+ggsave("output/AllSpecies_Pgross_TPC_and_estimates.jpg", figure, dpi=300, w=6, h=8, units="in")
+
+```
+
+Rdark
+
+# P. grandis Adult Curve fitting
+```{r}
+# grandis CURVE FIT
+# P. grandis
+d.grandis.adult <- data4 %>% 
+  filter(Species == "P. grandis")
+
+colnames(d.grandis.adult) <-c("Species", "colony_id", "temp_light", "temp", "Stage", "Pnet",
+                                "rate",  "Pgross")
+
+#fit 
+adult.grandis.fit <- nls_multstart(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                        data = d.grandis.adult,
+                        iter = c(3,3,3,3),
+                        start_lower = get_start_vals(d.grandis.adult$temp, d.grandis.adult$rate, model_name = 'sharpeschoolhigh_1981') - 1,
+                        start_upper = get_start_vals(d.grandis.adult$temp, d.grandis.adult$rate, model_name = 'sharpeschoolhigh_1981') + 1,
+                        lower = get_lower_lims(d.grandis.adult$temp, d.grandis.adult$rate, model_name = 'sharpeschoolhigh_1981'),
+                        upper = get_upper_lims(d.grandis.adult$temp, d.grandis.adult$rate, model_name = 'sharpeschoolhigh_1981'),
+                        supp_errors = 'Y',
+                        convergence_count = FALSE)
+
+adult.grandis.fit
+
+#generate the predicted data
+adult_grandis_new_data <- data.frame(temp = seq(min(d.grandis.adult$temp), max(d.grandis.adult$temp), 0.5))
+adult.grandis.preds <- augment(adult.grandis.fit, newdata = adult_grandis_new_data)
+
+#calculate TPC parameters
+adult.grandis.TCP.res <- calc_params(adult.grandis.fit) %>%
+  mutate_all(round, 2)   # round 
+
+adult.grandis.TCP.res
+
+### Bootstrapping  curve fit    
+# refit model using nlsLM
+adult.grandis.fit_nlsLM <- minpack.lm::nlsLM(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                        data = d.grandis.adult,
+                        start = coef(adult.grandis.fit),
+                        lower = get_lower_lims(d.grandis.adult$temp, d.grandis.adult$rate, model_name = 'sharpeschoolhigh_1981')-1,
+                        upper = get_upper_lims(d.grandis.adult$temp, d.grandis.adult$rate, model_name = 'sharpeschoolhigh_1981')+1,
+                        weights = rep(1, times = nrow(d.grandis.adult)))
+
+# bootstrap using case resampling
+adult.grandis.boot1 <- Boot(adult.grandis.fit_nlsLM, method = 'case')
+
+# look at the data
+head(adult.grandis.boot1$t)
+
+
+# create predictions of each bootstrapped model
+adult.grandis.boot1_preds <- adult.grandis.boot1$t %>%
+  as.data.frame() %>%
+  drop_na() %>%
+  mutate(iter = 1:n()) %>%
+  group_by_all() %>%
+  do(data.frame(temp = seq(min(d.grandis.adult$temp), max(d.grandis.adult$temp), length.out = 100))) %>%
+  ungroup() %>%
+  mutate(pred = sharpeschoolhigh_1981(temp, r_tref, e, eh, th, tref = 28))
+
+# calculate bootstrapped confidence intervals
+adult.grandis.boot1_conf_preds <- group_by(adult.grandis.boot1_preds, temp) %>%
+  summarise(conf_lower = quantile(pred, 0.025),
+            conf_upper = quantile(pred, 0.975)) %>%
+  ungroup()
+
+# plot bootstrapped CIs
+adult.grandis.CI.plot <- ggplot() +
+  geom_line(aes(temp, .fitted), adult.grandis.preds, col = '#56B4E9') +
+  geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper), adult.grandis.boot1_conf_preds, fill = '#56B4E9', alpha = 0.3) +
+  geom_point(aes(temp, rate), d.grandis.adult, size = 2, alpha = 0.5,col = '#56B4E9') +
+  theme_bw(base_size = 12) +
+  labs(x = 'Temperature (ºC)',
+       y = 'Rate (µmol O2/cm2/h)')
+adult.grandis.CI.plot
+
+```
+
+# P. meandrina Adult Curve fitting
+```{r}
+# meandrina CURVE FIT
+# P. meandrina
+d.meandrina.adult <- data4 %>% 
+  filter(Species == "P. meandrina")
+
+colnames(d.meandrina.adult) <-c("Species", "colony_id", "temp_light", "temp", "Stage", "Pnet",
+                                "rate",  "Pgross")
+
+#fit 
+adult.meandrina.fit <- nls_multstart(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                        data = d.meandrina.adult,
+                        iter = c(3,3,3,3),
+                        start_lower = get_start_vals(d.meandrina.adult$temp, d.meandrina.adult$rate, model_name = 'sharpeschoolhigh_1981') - 1,
+                        start_upper = get_start_vals(d.meandrina.adult$temp, d.meandrina.adult$rate, model_name = 'sharpeschoolhigh_1981') + 1,
+                        lower = get_lower_lims(d.meandrina.adult$temp, d.meandrina.adult$rate, model_name = 'sharpeschoolhigh_1981'),
+                        upper = get_upper_lims(d.meandrina.adult$temp, d.meandrina.adult$rate, model_name = 'sharpeschoolhigh_1981'),
+                        supp_errors = 'Y',
+                        convergence_count = FALSE)
+
+adult.meandrina.fit
+
+#generate the predicted data
+adult_meandrina_new_data <- data.frame(temp = seq(min(d.meandrina.adult$temp), max(d.meandrina.adult$temp), 0.5))
+adult.meandrina.preds <- augment(adult.meandrina.fit, newdata = adult_meandrina_new_data)
+
+#calculate TPC parameters
+adult.meandrina.TCP.res <- calc_params(adult.meandrina.fit) %>%
+  mutate_all(round, 2)   # round 
+
+adult.meandrina.TCP.res
+
+### Bootstrapping  curve fit    
+# refit model using nlsLM
+adult.meandrina.fit_nlsLM <- minpack.lm::nlsLM(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                        data = d.meandrina.adult,
+                        start = coef(adult.meandrina.fit),
+                        lower = get_lower_lims(d.meandrina.adult$temp, d.meandrina.adult$rate, model_name = 'sharpeschoolhigh_1981')-1,
+                        upper = get_upper_lims(d.meandrina.adult$temp, d.meandrina.adult$rate, model_name = 'sharpeschoolhigh_1981')+1,
+                        weights = rep(1, times = nrow(d.meandrina.adult)))
+
+# bootstrap using case resampling
+adult.meandrina.boot1 <- Boot(adult.meandrina.fit_nlsLM, method = 'case')
+
+# look at the data
+head(adult.meandrina.boot1$t)
+
+
+# create predictions of each bootstrapped model
+adult.meandrina.boot1_preds <- adult.meandrina.boot1$t %>%
+  as.data.frame() %>%
+  drop_na() %>%
+  mutate(iter = 1:n()) %>%
+  group_by_all() %>%
+  do(data.frame(temp = seq(min(d.meandrina.adult$temp), max(d.meandrina.adult$temp), length.out = 100))) %>%
+  ungroup() %>%
+  mutate(pred = sharpeschoolhigh_1981(temp, r_tref, e, eh, th, tref = 28))
+
+# calculate bootstrapped confidence intervals
+adult.meandrina.boot1_conf_preds <- group_by(adult.meandrina.boot1_preds, temp) %>%
+  summarise(conf_lower = quantile(pred, 0.025),
+            conf_upper = quantile(pred, 0.975)) %>%
+  ungroup()
+
+# plot bootstrapped CIs
+adult.meandrina.CI.plot <- ggplot() +
+  geom_line(aes(temp, .fitted), adult.meandrina.preds, col = '#0072B2') +
+  geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper), adult.meandrina.boot1_conf_preds, fill = '#0072B2', alpha = 0.3) +
+  geom_point(aes(temp, rate), d.meandrina.adult, size = 2, alpha = 0.5,col = '#0072B2') +
+  theme_bw(base_size = 12) +
+  labs(x = 'Temperature (ºC)',
+       y = 'Rate (µmol O2/cm2/h)')
+adult.meandrina.CI.plot
+
+```
+
+# P. tuahiniensis Adult Curve fitting
+```{r}
+# tuahiniensis CURVE FIT
+# P. tuahiniensis
+d.tuahiniensis.adult <- data4 %>% 
+  filter(Species == "P. tuahiniensis")
+
+colnames(d.tuahiniensis.adult) <-c("Species", "colony_id", "temp_light", "temp", "Stage", "Pnet",
+                                "rate",  "Pgross")
+
+#fit 
+adult.tuahiniensis.fit <- nls_multstart(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                        data = d.tuahiniensis.adult,
+                        iter = c(3,3,3,3),
+                        start_lower = get_start_vals(d.tuahiniensis.adult$temp, d.tuahiniensis.adult$rate, model_name = 'sharpeschoolhigh_1981') - 1,
+                        start_upper = get_start_vals(d.tuahiniensis.adult$temp, d.tuahiniensis.adult$rate, model_name = 'sharpeschoolhigh_1981') + 1,
+                        lower = get_lower_lims(d.tuahiniensis.adult$temp, d.tuahiniensis.adult$rate, model_name = 'sharpeschoolhigh_1981'),
+                        upper = get_upper_lims(d.tuahiniensis.adult$temp, d.tuahiniensis.adult$rate, model_name = 'sharpeschoolhigh_1981'),
+                        supp_errors = 'Y',
+                        convergence_count = FALSE)
+
+adult.tuahiniensis.fit
+
+#generate the predicted data
+adult_tuahiniensis_new_data <- data.frame(temp = seq(min(d.tuahiniensis.adult$temp), max(d.tuahiniensis.adult$temp), 0.5))
+adult.tuahiniensis.preds <- augment(adult.tuahiniensis.fit, newdata = adult_tuahiniensis_new_data)
+
+#calculate TPC parameters
+adult.tuahiniensis.TCP.res <- calc_params(adult.tuahiniensis.fit) %>%
+  mutate_all(round, 2)   # round 
+
+adult.tuahiniensis.TCP.res
+
+### Bootstrapping  curve fit    
+# refit model using nlsLM
+adult.tuahiniensis.fit_nlsLM <- minpack.lm::nlsLM(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                        data = d.tuahiniensis.adult,
+                        start = coef(adult.tuahiniensis.fit),
+                        lower = get_lower_lims(d.tuahiniensis.adult$temp, d.tuahiniensis.adult$rate, model_name = 'sharpeschoolhigh_1981')-1,
+                        upper = get_upper_lims(d.tuahiniensis.adult$temp, d.tuahiniensis.adult$rate, model_name = 'sharpeschoolhigh_1981')+1,
+                        weights = rep(1, times = nrow(d.tuahiniensis.adult)))
+
+# bootstrap using case resampling
+adult.tuahiniensis.boot1 <- Boot(adult.tuahiniensis.fit_nlsLM, method = 'case')
+
+# look at the data
+head(adult.tuahiniensis.boot1$t)
+
+
+# create predictions of each bootstrapped model
+adult.tuahiniensis.boot1_preds <- adult.tuahiniensis.boot1$t %>%
+  as.data.frame() %>%
+  drop_na() %>%
+  mutate(iter = 1:n()) %>%
+  group_by_all() %>%
+  do(data.frame(temp = seq(min(d.tuahiniensis.adult$temp), max(d.tuahiniensis.adult$temp), length.out = 100))) %>%
+  ungroup() %>%
+  mutate(pred = sharpeschoolhigh_1981(temp, r_tref, e, eh, th, tref = 28))
+
+# calculate bootstrapped confidence intervals
+adult.tuahiniensis.boot1_conf_preds <- group_by(adult.tuahiniensis.boot1_preds, temp) %>%
+  summarise(conf_lower = quantile(pred, 0.025),
+            conf_upper = quantile(pred, 0.975)) %>%
+  ungroup()
+
+# plot bootstrapped CIs
+adult.tuahiniensis.CI.plot <- ggplot() +
+  geom_line(aes(temp, .fitted), adult.tuahiniensis.preds, col = '#D55E00') +
+  geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper), adult.tuahiniensis.boot1_conf_preds, fill = '#D55E00', alpha = 0.3) +
+  geom_point(aes(temp, rate), d.tuahiniensis.adult, size = 2, alpha = 0.5,col = '#D55E00') +
+  theme_bw(base_size = 12) +
+  labs(x = 'Temperature (ºC)',
+       y = 'Rate (µmol O2/cm2/h)')
+adult.tuahiniensis.CI.plot
+
+```
+
+
+# P. verrucosa Adult Curve fitting
+```{r}
+# verrucosa CURVE FIT
+# P. verrucosa
+d.verrucosa.adult <- data4 %>% 
+  filter(Species == "P. verrucosa")
+
+colnames(d.verrucosa.adult) <-c("Species", "colony_id", "temp_light", "temp", "Stage", "Pnet",
+                                "rate",  "Pgross")
+
+#fit 
+adult.verrucosa.fit <- nls_multstart(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                        data = d.verrucosa.adult,
+                        iter = c(3,3,3,3),
+                        start_lower = get_start_vals(d.verrucosa.adult$temp, d.verrucosa.adult$rate, model_name = 'sharpeschoolhigh_1981') - 1,
+                        start_upper = get_start_vals(d.verrucosa.adult$temp, d.verrucosa.adult$rate, model_name = 'sharpeschoolhigh_1981') + 1,
+                        lower = get_lower_lims(d.verrucosa.adult$temp, d.verrucosa.adult$rate, model_name = 'sharpeschoolhigh_1981'),
+                        upper = get_upper_lims(d.verrucosa.adult$temp, d.verrucosa.adult$rate, model_name = 'sharpeschoolhigh_1981'),
+                        supp_errors = 'Y',
+                        convergence_count = FALSE)
+
+adult.verrucosa.fit
+
+#generate the predicted data
+adult_verrucosa_new_data <- data.frame(temp = seq(min(d.verrucosa.adult$temp), max(d.verrucosa.adult$temp), 0.5))
+adult.verrucosa.preds <- augment(adult.verrucosa.fit, newdata = adult_verrucosa_new_data)
+
+#calculate TPC parameters
+adult.verrucosa.TCP.res <- calc_params(adult.verrucosa.fit) %>%
+  mutate_all(round, 2)   # round 
+
+adult.verrucosa.TCP.res
+
+### Bootstrapping  curve fit    
+# refit model using nlsLM
+adult.verrucosa.fit_nlsLM <- minpack.lm::nlsLM(rate~sharpeschoolhigh_1981(temp = temp, r_tref,e,eh,th, tref = 28),
+                        data = d.verrucosa.adult,
+                        start = coef(adult.verrucosa.fit),
+                        lower = get_lower_lims(d.verrucosa.adult$temp, d.verrucosa.adult$rate, model_name = 'sharpeschoolhigh_1981')-1,
+                        upper = get_upper_lims(d.verrucosa.adult$temp, d.verrucosa.adult$rate, model_name = 'sharpeschoolhigh_1981')+1,
+                        weights = rep(1, times = nrow(d.verrucosa.adult)))
+
+# bootstrap using case resampling
+adult.verrucosa.boot1 <- Boot(adult.verrucosa.fit_nlsLM, method = 'case')
+
+# look at the data
+head(adult.verrucosa.boot1$t)
+
+
+# create predictions of each bootstrapped model
+adult.verrucosa.boot1_preds <- adult.verrucosa.boot1$t %>%
+  as.data.frame() %>%
+  drop_na() %>%
+  mutate(iter = 1:n()) %>%
+  group_by_all() %>%
+  do(data.frame(temp = seq(min(d.verrucosa.adult$temp), max(d.verrucosa.adult$temp), length.out = 100))) %>%
+  ungroup() %>%
+  mutate(pred = sharpeschoolhigh_1981(temp, r_tref, e, eh, th, tref = 28))
+
+# calculate bootstrapped confidence intervals
+adult.verrucosa.boot1_conf_preds <- group_by(adult.verrucosa.boot1_preds, temp) %>%
+  summarise(conf_lower = quantile(pred, 0.025),
+            conf_upper = quantile(pred, 0.975)) %>%
+  ungroup()
+
+# plot bootstrapped CIs
+adult.verrucosa.CI.plot <- ggplot() +
+  geom_line(aes(temp, .fitted), adult.verrucosa.preds, col = '#E69F00') +
+  geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper), adult.verrucosa.boot1_conf_preds, fill = '#E69F00', alpha = 0.3) +
+  geom_point(aes(temp, rate), d.verrucosa.adult, size = 2, alpha = 0.5,col = '#E69F00') +
+  theme_bw(base_size = 12) +
+  labs(x = 'Temperature (ºC)',
+       y = 'Rate (µmol O2/cm2/h)')
+adult.verrucosa.CI.plot
+
+```
+
+```{r}
+ #set plot colors
+# set the colors for plotting
+cols <- cbind.data.frame(Species = factor(c("P. tuahiniensis",
+                                            "P. meandrina",
+                                            "P. verrucosa",
+                                            "P. grandis",
+                                            "P. cf. effusa",
+                                            "P. acuta")),
+                         Color = c("#D55E00",
+                                   "#0072B2",
+                                   "#E69F00",
+                                   "#56B4E9",
+                                   "#009E73",
+                                   "#e63946"))
+  
+# plot data and model fit
+PM.TPC.plot <- ggplot(data=data4, aes(x=temp)) +
+   geom_point(aes(temp, rate, color="P. grandis"), d.grandis.adult, col = '#56B4E9',size = 2) +
+   geom_point(aes(temp, rate, color="P. meandrina"), d.meandrina.adult, col = '#0072B2', size = 2) +
+   geom_point(aes(temp, rate, color="P. tuahiniensis"), d.tuahiniensis.adult, col = '#D55E00',  size = 2) +
+   geom_point(aes(temp, rate, color="P. verrucosa"), d.meandrina.adult, col = '#E69F00', size = 2) +
+   geom_line(aes(temp, .fitted), adult.grandis.preds, col = '#56B4E9', size=2) +
+   geom_line(aes(temp, .fitted), adult.meandrina.preds, col = '#0072B2', size=2) +
+   geom_line(aes(temp, .fitted), adult.tuahiniensis.preds, col = '#D55E00', size=2) +
+   geom_line(aes(temp, .fitted), adult.verrucosa.preds, col = '#E69F00', size=2) +
+   geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper), adult.grandis.boot1_conf_preds, fill = "#56B4E9", alpha = 0.3) +
+  geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper), adult.meandrina.boot1_conf_preds, fill = "#0072B2", alpha = 0.3) +
+  geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper), adult.tuahiniensis.boot1_conf_preds, fill = "#D55E00", alpha = 0.3) +
+  geom_ribbon(aes(temp, ymin = conf_lower, ymax = conf_upper), adult.verrucosa.boot1_conf_preds, fill = "#E69F00", alpha = 0.3) +
+
+   xlim(16,41)+
+  #ylim(0,0.45)+
+   scale_x_continuous(breaks=c(16,22,24,26,28,30,32,34,36,41))+
+   theme_bw(base_size = 12) +
+   scale_colour_manual(name="Species",values=cols)+
+   theme(legend.position = "none",
+         panel.border = element_blank(), panel.grid.major = element_blank(),
+         panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+   labs(x = 'Temperature (ºC)',
+        y = expression("Rate"~µmol~O[2] ~cm^{-2}~h^{-1}))
+
+PM.TPC.plot 
+```
+
+
+# Bootstrap CI for all TPC parameters
+```{r}
+broom::tidy(adult.grandis.fit_nlsLM)
+broom::tidy(adult.meandrina.fit_nlsLM)
+broom::tidy(adult.tuahiniensis.fit_nlsLM)
+broom::tidy(adult.verrucosa.fit_nlsLM)
+
+```
+
+
+#grandis adults
+```{r}
+#calculate all the TPC parameters
+adult.grandis.extra_params <- calc_params(adult.grandis.fit_nlsLM) %>%
+  pivot_longer(everything(), names_to =  'param', values_to = 'estimate')
+
+#calculate CIs for all the TPC parameters
+adult.grandis.ci_extra_params <- Boot(adult.grandis.fit_nlsLM, f = function(x){unlist(calc_params(x))}, labels = names(calc_params(adult.grandis.fit_nlsLM)), R = 200, method = 'case') %>%
+  confint(., method = 'perc') %>%
+  as.data.frame() %>%
+  rename(conf_lower = 1, conf_upper = 2) %>%
+  rownames_to_column(., var = 'param') %>%
+  mutate(method = 'case bootstrap')
+
+#join the parameters and CIs  
+adult.grandis.ci_extra_params<- left_join(adult.grandis.ci_extra_params, adult.grandis.extra_params)
+adult.grandis.ci_extra_params$Species <- "P. grandis"
+```
+
+#meandrina adults
+```{r}
+#calculate all the TPC parameters
+adult.meandrina.extra_params <- calc_params(adult.meandrina.fit_nlsLM) %>%
+  pivot_longer(everything(), names_to =  'param', values_to = 'estimate')
+
+#calculate CIs for all the TPC parameters
+adult.meandrina.ci_extra_params <- Boot(adult.meandrina.fit_nlsLM, f = function(x){unlist(calc_params(x))}, labels = names(calc_params(adult.meandrina.fit_nlsLM)), R = 200, method = 'case') %>%
+  confint(., method = 'perc') %>%
+  as.data.frame() %>%
+  rename(conf_lower = 1, conf_upper = 2) %>%
+  rownames_to_column(., var = 'param') %>%
+  mutate(method = 'case bootstrap')
+
+#join the parameters and CIs  
+adult.meandrina.ci_extra_params<- left_join(adult.meandrina.ci_extra_params, adult.meandrina.extra_params)
+adult.meandrina.ci_extra_params$Species <- "P. meandrina"
+```
+
+#tuahiniensis adults
+```{r}
+#calculate all the TPC parameters
+adult.tuahiniensis.extra_params <- calc_params(adult.tuahiniensis.fit_nlsLM) %>%
+  pivot_longer(everything(), names_to =  'param', values_to = 'estimate')
+
+#calculate CIs for all the TPC parameters
+adult.tuahiniensis.ci_extra_params <- Boot(adult.tuahiniensis.fit_nlsLM, f = function(x){unlist(calc_params(x))}, labels = names(calc_params(adult.tuahiniensis.fit_nlsLM)), R = 200, method = 'case') %>%
+  confint(., method = 'perc') %>%
+  as.data.frame() %>%
+  rename(conf_lower = 1, conf_upper = 2) %>%
+  rownames_to_column(., var = 'param') %>%
+  mutate(method = 'case bootstrap')
+
+#join the parameters and CIs  
+adult.tuahiniensis.ci_extra_params<- left_join(adult.tuahiniensis.ci_extra_params, adult.tuahiniensis.extra_params)
+adult.tuahiniensis.ci_extra_params$Species <- "P. tuahiniensis"
+```
+
+#verrucosa adults
+```{r}
+#calculate all the TPC parameters
+adult.verrucosa.extra_params <- calc_params(adult.verrucosa.fit_nlsLM) %>%
+  pivot_longer(everything(), names_to =  'param', values_to = 'estimate')
+
+#calculate CIs for all the TPC parameters
+adult.verrucosa.ci_extra_params <- Boot(adult.verrucosa.fit_nlsLM, f = function(x){unlist(calc_params(x))}, labels = names(calc_params(adult.verrucosa.fit_nlsLM)), R = 200, method = 'case') %>%
+  confint(., method = 'perc') %>%
+  as.data.frame() %>%
+  rename(conf_lower = 1, conf_upper = 2) %>%
+  rownames_to_column(., var = 'param') %>%
+  mutate(method = 'case bootstrap')
+
+#join the parameters and CIs  
+adult.verrucosa.ci_extra_params<- left_join(adult.verrucosa.ci_extra_params, adult.verrucosa.extra_params)
+adult.verrucosa.ci_extra_params$Species <- "P. verrucosa"
+```
+
+#Join Species estimates and CIs
+```{r}
+All_params <- rbind(adult.grandis.ci_extra_params, adult.meandrina.ci_extra_params,
+                    adult.tuahiniensis.ci_extra_params, adult.verrucosa.ci_extra_params)
+All_params <- All_params %>% 
+ mutate_if(is.numeric, round, 2)
+
+
+
+#Plot all of the estimates
+estimate.plots <- ggplot(All_params, aes(Species, estimate, color=Species)) +
+  geom_point(size = 2) +
+  scale_color_manual(name="Species", values=c("#56B4E9","#0072B2","#D55E00","#E69F00"))+
+  geom_linerange(aes(ymin = conf_lower, ymax = conf_upper)) +
+  theme_bw() +
+  facet_wrap(~param, scales = 'free_y') +
+  scale_x_discrete('')
+
+estimate.plots
+
+# #filter to only the most relavent and well characterized parameters
+ All_params <- All_params %>% 
+   filter(!param=="ctmin") %>%
+#   filter(!param=="ctmax") %>%
+#   filter(!param=="eh") %>%
+#   filter(!param=="rmax") %>%
+   filter(!param=="skewness") %>%
+#   filter(!param=="topt") %>%
+   filter(!param=="thermal_tolerance") #%>%
+#   filter(!param=="q10") %>%
+#   filter(!param=="e") %>%
+#   filter(!param=="breadth")%>%
+#   filter(!param=="thermal_safety_margin")
+  
+#Plot selected  estimates
+estimate.plots <- ggplot(All_params, aes(Species, estimate, color=Species)) +
+  geom_point(size = 2) +
+  scale_color_manual(name="Species", values=c("#56B4E9","#0072B2","#D55E00","#E69F00"))+
+  geom_linerange(aes(ymin = conf_lower, ymax = conf_upper)) +
+  theme_bw() +
+  facet_wrap(~param, scales = 'free_y') +
+  scale_x_discrete('')+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+estimate.plots
+
+```
+
+#Plot Curve and Estimate Output
+```{r}
+#generate a combined figure of TPCs and estimate plots
+figure <- ggarrange(PM.TPC.plot , estimate.plots,
+                    hjust = c(.01,.01),
+                    vjust = c(1.2,.01),
+                    labels = c("A) Rdark", "B) BootStrap TPC Estimates"),
+                    ncol = 1, nrow = 2,
+                    heights=c(1,1))
+figure
+
+ggsave("output/AllSpecies_Rdark_TPC_and_estimates.pdf", figure, dpi=300, w=6, h=8, units="in")
+ggsave("output/AllSpecies_Rdark_TPC_and_estimates.jpg", figure, dpi=300, w=6, h=8, units="in")
 
 ```

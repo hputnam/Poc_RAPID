@@ -222,6 +222,8 @@ unannot <- sum(is.na(EG.Annot$Hit_accession))
 #read in the genome gff file
 calc.lengths <- read.table("data/Tagseq_zymo_genohub/Pver_genome_assembly_v1.0_modified.gff3", header=F)
 
+UTRs <-calc.lengths %>% filter(V3=="three_prime_UTR")
+
 #filter to the mRNA
 calc.lengths <- calc.lengths %>% filter(V3=="gene")
 
@@ -268,7 +270,7 @@ length(missing.gff.genes)
 ```{r}
 
 #set the all transcripts list
-ALL<-row.names(TranscriptCountData)
+ALL<-row.names(filt.count.mat)
 
 #set the enrichment test list with the expressed fitered genes
 DEG <- as.character(EGs$Gene) 
@@ -315,8 +317,9 @@ head(GO.wall)
 tail(GO.wall)
 nrow(GO.wall)
 
-#Find only enriched GO terms that are statistically significant at chosen cutoff 
-enriched.GO.05.a<-GO.wall$category[GO.wall$over_represented_pvalue<.01]
+#Find only enriched GO terms that are statistically significant at chosen cutoff
+#include multiple comparison testing correction
+enriched.GO.05.a<- GO.wall$category[p.adjust(GO.wall$over_represented_pvalue, method = "BH") < .05]
 
 #format as dataframe
 enriched.GO.05<-data.frame(enriched.GO.05.a)

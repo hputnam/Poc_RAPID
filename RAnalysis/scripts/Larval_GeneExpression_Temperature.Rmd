@@ -371,6 +371,31 @@ data2.labels <- data.frame(
   text.lab = c("Higher at 31°C", "Higher at 28°C")
   )
 
+#set the order of factors for labels
+Output$label <- factor(Output$label, levels = Output$label[order(Output$log2FoldChange)])
+
+
+#plot FC and pvalues
+pdf("figures/DEG_LFC_Larvae_Temperature_31v28.pdf", height = 12, width = 8)
+DEG_LFC_31v28 <- Output %>% arrange(log2FoldChange) %>%
+  ggplot(aes(x=label, y=log2FoldChange, colour=padj)) +
+  ylim(-10,10)+
+  geom_point(size=5)+
+  scale_colour_gradientn(colours = colorspace::heat_hcl(7))+
+  geom_segment(aes(x=label, xend=label, y=0, yend=log2FoldChange),linewidth=4) +
+  coord_flip()+
+  geom_vline(xintercept=12.5, linetype='dotted', col = 'black')+
+  annotate("text", x=11, y=-6, label="Higher at 28°C", col = 'black')+
+  annotate("text", x=14, y=6, label="Higher at 31°C", col = 'black')+
+  theme_classic() +
+  theme(legend.position = c(0.8, 0.1),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 14, face = "bold"),
+        plot.title = element_text(size = 40, face = "bold"))
+DEG_LFC_31v28
+dev.off()
+
+
 # DEGs higher at 31
 Output.Higher.31 <- Output %>%
   subset(log2FoldChange>0)
@@ -474,13 +499,13 @@ length(missing.gff.genes)
 #GO enrichment of DEGs that are HIGHER IN EXPRESSION at 31
 ```{r}
 #set the all transcripts list
-ALL<-row.names(TranscriptCountData)
+ALL<-row.names(filt.count.mat)
 
 #set the enrichment test list with the expressed filtered genes
 DEG <- as.character(row.names(up.31.sig.list)) #set the enrichment test list
 
 #set ID names
-IDs <- row.names(TranscriptCountData) 
+#IDs <- row.names(TranscriptCountData) 
 
 #set length information
 LENGTH <-calc.lengths 
@@ -521,8 +546,10 @@ head(GO.wall)
 tail(GO.wall)
 nrow(GO.wall)
 
-#Find only enriched GO terms that are statistically significant at chosen cutoff 
-enriched.GO.05.a<-GO.wall$category[GO.wall$over_represented_pvalue<.01]
+#Find only enriched GO terms that are statistically significant at chosen cutoff
+#include multiple comparison testing correction
+enriched.GO.05.a<- GO.wall$category[p.adjust(GO.wall$over_represented_pvalue, method = "BH") < .05]
+
 
 #format as dataframe
 enriched.GO.05<-data.frame(enriched.GO.05.a)
@@ -548,70 +575,70 @@ L31.BP.INT <- L31.BP.INT[order(L31.BP.INT$numDEInCat),]
 
 ```
 
-#Plotting BP enriched in DEGS from Larvae at 31
-```{r}
-# similarity of GO terms in the DEG list for BP
-simMatrix <- calculateSimMatrix(L31.BP.INT$category,
-                                orgdb="org.Ce.eg.db", 
-                                ont=c("BP"),
-                                method="Rel")
+<!-- #Plotting BP enriched in DEGS from Larvae at 31 -->
+<!-- ```{r} -->
+<!-- # similarity of GO terms in the DEG list for BP -->
+<!-- simMatrix <- calculateSimMatrix(L31.BP.INT$category, -->
+<!--                                 orgdb="org.Ce.eg.db",  -->
+<!--                                 ont=c("BP"), -->
+<!--                                 method="Rel") -->
 
 
-scores <- setNames(-log(L31.BP.INT$over_represented_pvalue), L31.BP.INT$category)
-reducedTerms.31 <- reduceSimMatrix(simMatrix,
-                                scores,
-                                threshold=0.9,
-                                orgdb="org.Ce.eg.db")
-colnames(reducedTerms.31)[1] <- "category"
+<!-- scores <- setNames(-log(L31.BP.INT$over_represented_pvalue), L31.BP.INT$category) -->
+<!-- reducedTerms.31 <- reduceSimMatrix(simMatrix, -->
+<!--                                 scores, -->
+<!--                                 threshold=0.9, -->
+<!--                                 orgdb="org.Ce.eg.db") -->
+<!-- colnames(reducedTerms.31)[1] <- "category" -->
 
-#conduct clustering of the similarity matrix
-hc <- hclust(dist(simMatrix))
+<!-- #conduct clustering of the similarity matrix -->
+<!-- hc <- hclust(dist(simMatrix)) -->
 
-# identify the information for each tip label in the data
-d1 <- data.frame(id=hc$labels,
-                 node=hc$order) #,val=rnorm(30, sd=3))
-colnames(d1)[1] <- "category"
-colnames(reducedTerms.31)[1] <- "category"
-d1 <- left_join(d1,reducedTerms.31, by="category")
-d1 <- left_join(d1,L31.BP.INT, by="category")
+<!-- # identify the information for each tip label in the data -->
+<!-- d1 <- data.frame(id=hc$labels, -->
+<!--                  node=hc$order) #,val=rnorm(30, sd=3)) -->
+<!-- colnames(d1)[1] <- "category" -->
+<!-- colnames(reducedTerms.31)[1] <- "category" -->
+<!-- d1 <- left_join(d1,reducedTerms.31, by="category") -->
+<!-- d1 <- left_join(d1,L31.BP.INT, by="category") -->
 
-# Reorder levels of category based on parentTerm
-d1 <- d1 %>% 
-  arrange(parentTerm) %>%
-  mutate(category = factor(category, levels = unique(category)))
+<!-- # Reorder levels of category based on parentTerm -->
+<!-- d1 <- d1 %>%  -->
+<!--   arrange(parentTerm) %>% -->
+<!--   mutate(category = factor(category, levels = unique(category))) -->
 
-#pdf("figures/L31_GO_Enrichment_semsim.pdf", width = 8, height = 20)
-L31BPGO <- d1 %>%
-  ggplot(aes(x=category, y=-log10(over_represented_pvalue), colour=parentTerm)) +
-  #ylim(-16,16)+
-  geom_segment(aes(x=category, xend=category, y=0, yend=-log10(over_represented_pvalue), colour = parentTerm),
-               linewidth=2) +
-  geom_point(aes(size=numDEInCat), colour="black")+
-  facet_grid(parentTerm ~ ., scales="free_y", labeller = label_wrap_gen(width = 2, multi_line = TRUE))+
-  scale_colour_discrete() + 
-  coord_flip()+
-  theme_classic() +
-  theme(legend.position = "none",
-        axis.title.y = element_blank(),
-        axis.title.x = element_text(size = 14, face = "bold"),
-        axis.text.x = element_text(size = 8),
-        plot.title = element_text(size = 40, face = "bold"))+
-  ggtitle('B')
-L31BPGO
-#dev.off()
+<!-- #pdf("figures/L31_GO_Enrichment_semsim.pdf", width = 8, height = 20) -->
+<!-- L31BPGO <- d1 %>% -->
+<!--   ggplot(aes(x=category, y=-log10(over_represented_pvalue), colour=parentTerm)) + -->
+<!--   #ylim(-16,16)+ -->
+<!--   geom_segment(aes(x=category, xend=category, y=0, yend=-log10(over_represented_pvalue), colour = parentTerm), -->
+<!--                linewidth=2) + -->
+<!--   geom_point(aes(size=numDEInCat), colour="black")+ -->
+<!--   facet_grid(parentTerm ~ ., scales="free_y", labeller = label_wrap_gen(width = 2, multi_line = TRUE))+ -->
+<!--   scale_colour_discrete() +  -->
+<!--   coord_flip()+ -->
+<!--   theme_classic() + -->
+<!--   theme(legend.position = "none", -->
+<!--         axis.title.y = element_blank(), -->
+<!--         axis.title.x = element_text(size = 14, face = "bold"), -->
+<!--         axis.text.x = element_text(size = 8), -->
+<!--         plot.title = element_text(size = 40, face = "bold"))+ -->
+<!--   ggtitle('B') -->
+<!-- L31BPGO -->
+<!-- #dev.off() -->
 
-```
+<!-- ``` -->
 
 #GO enrichment of DEGs that are HIGHER IN EXPRESSION at 28
 ```{r}
 #set the all transcripts list
-ALL<-row.names(TranscriptCountData)
+ALL<-row.names(filt.count.mat)
 
 #set the enrichment test list with the expressed filtered genes
 DEG <- as.character(row.names(up.28.sig.list)) #set the enrichment test list
 
 #set ID names
-IDs <- row.names(TranscriptCountData) 
+#IDs <- row.names(TranscriptCountData) 
 
 #set length information
 LENGTH <-calc.lengths 
@@ -652,8 +679,9 @@ head(GO.wall)
 tail(GO.wall)
 nrow(GO.wall)
 
-#Find only enriched GO terms that are statistically significant at chosen cutoff 
-enriched.GO.05.a<-GO.wall$category[GO.wall$over_represented_pvalue<.01]
+#Find only enriched GO terms that are statistically significant at chosen cutoff
+#include multiple comparison testing correction
+enriched.GO.05.a<- GO.wall$category[p.adjust(GO.wall$over_represented_pvalue, method = "BH") < .05]
 
 #format as dataframe
 enriched.GO.05<-data.frame(enriched.GO.05.a)
@@ -678,83 +706,83 @@ L28.BP.INT <- L28.BP.INT[order(L28.BP.INT$numDEInCat),]
 ```
 
 
-# GO Plotting
-#Plotting BP enriched in DEGS from Larvae at 28
-```{r}
+# # GO Plotting
+# #Plotting BP enriched in DEGS from Larvae at 28
+# ```{r}
+# 
+# # similarity of GO terms in the DEG list for BP
+# simMatrix <- calculateSimMatrix(L28.BP.INT$category,
+#                                 orgdb="org.Ce.eg.db", 
+#                                 ont=c("BP"),
+#                                 method="Rel")
+# 
+# 
+# scores <- setNames(-log(L28.BP.INT$over_represented_pvalue), L28.BP.INT$category)
+# reducedTerms.28 <- reduceSimMatrix(simMatrix,
+#                                 scores,
+#                                 threshold=0.9,
+#                                 orgdb="org.Ce.eg.db")
+# colnames(reducedTerms.28)[1] <- "category"
+# 
+# #conduct clustering of the similarity matrix
+# hc <- hclust(dist(simMatrix))
+# 
+# # identify the information for each tip label in the data
+# d2 <- data.frame(id=hc$labels,
+#                  node=hc$order) #,val=rnorm(30, sd=3))
+# colnames(d2)[1] <- "category"
+# colnames(reducedTerms.28)[1] <- "category"
+# d2 <- left_join(d2,reducedTerms.28, by="category")
+# d2 <- left_join(d2,L28.BP.INT, by="category")
+# 
+# # Reorder levels of category based on parentTerm
+# d2 <- d2 %>% 
+#   arrange(parentTerm) %>%
+#   mutate(category = factor(category, levels = unique(category)))
+# 
+# #pdf("figures/L28_GO_Enrichment_semsim.pdf", width = 7, height = 12)
+# L28BPGO <- d2 %>%
+#   ggplot(aes(x=category, y=-log10(over_represented_pvalue), colour=parentTerm)) +
+#   #ylim(-16,16)+
+#   geom_segment(aes(x=category, xend=category, y=0, yend=-log10(over_represented_pvalue), colour = parentTerm),
+#                linewidth=2) +
+#   geom_point(aes(size=numDEInCat), colour="black")+
+#   facet_grid(parentTerm ~ ., scales="free_y", labeller = label_wrap_gen(width = 2, multi_line = TRUE))+
+#   scale_colour_discrete() +
+#   coord_flip()+
+#   theme_classic() +
+#   theme(legend.position = "none",
+#         axis.title.y = element_blank(),
+#         axis.title.x = element_text(size = 14, face = "bold"),
+#         axis.text.x = element_text(size = 8),
+#         plot.title = element_text(size = 40, face = "bold"))+
+#   ggtitle('B')
+# L28BPGO
+# #dev.off()
+# ```
 
-# similarity of GO terms in the DEG list for BP
-simMatrix <- calculateSimMatrix(L28.BP.INT$category,
-                                orgdb="org.Ce.eg.db", 
-                                ont=c("BP"),
-                                method="Rel")
-
-
-scores <- setNames(-log(L28.BP.INT$over_represented_pvalue), L28.BP.INT$category)
-reducedTerms.28 <- reduceSimMatrix(simMatrix,
-                                scores,
-                                threshold=0.9,
-                                orgdb="org.Ce.eg.db")
-colnames(reducedTerms.28)[1] <- "category"
-
-#conduct clustering of the similarity matrix
-hc <- hclust(dist(simMatrix))
-
-# identify the information for each tip label in the data
-d2 <- data.frame(id=hc$labels,
-                 node=hc$order) #,val=rnorm(30, sd=3))
-colnames(d2)[1] <- "category"
-colnames(reducedTerms.28)[1] <- "category"
-d2 <- left_join(d2,reducedTerms.28, by="category")
-d2 <- left_join(d2,L28.BP.INT, by="category")
-
-# Reorder levels of category based on parentTerm
-d2 <- d2 %>% 
-  arrange(parentTerm) %>%
-  mutate(category = factor(category, levels = unique(category)))
-
-#pdf("figures/L28_GO_Enrichment_semsim.pdf", width = 7, height = 12)
-L28BPGO <- d2 %>%
-  ggplot(aes(x=category, y=-log10(over_represented_pvalue), colour=parentTerm)) +
-  #ylim(-16,16)+
-  geom_segment(aes(x=category, xend=category, y=0, yend=-log10(over_represented_pvalue), colour = parentTerm),
-               linewidth=2) +
-  geom_point(aes(size=numDEInCat), colour="black")+
-  facet_grid(parentTerm ~ ., scales="free_y", labeller = label_wrap_gen(width = 2, multi_line = TRUE))+
-  scale_colour_discrete() +
-  coord_flip()+
-  theme_classic() +
-  theme(legend.position = "none",
-        axis.title.y = element_blank(),
-        axis.title.x = element_text(size = 14, face = "bold"),
-        axis.text.x = element_text(size = 8),
-        plot.title = element_text(size = 40, face = "bold"))+
-  ggtitle('B')
-L28BPGO
-#dev.off()
-
-```
 
 # combining plots
-```{r}
-
-#DEG_LFC
-#L31BPGO 
-#L28BPGO
-
-# # One plot at the left and two at the right
-# pdf("figures/Temperature_DEG_GO_31.pdf", height=24, width = 22)
-# (DEG_LFC)|(L31BPGO / L28BPGO) + plot_layout(heights = c(1.9, 1.1), guides = "collect")
+# ```{r}
+# 
+# #DEG_LFC
+# #L31BPGO 
+# #L28BPGO
+# 
+# # # One plot at the left and two at the right
+# # pdf("figures/Temperature_DEG_GO_31.pdf", height=24, width = 22)
+# # (DEG_LFC)|(L31BPGO / L28BPGO) + plot_layout(heights = c(1.9, 1.1), guides = "collect")
+# # dev.off()
+# 
+# 
+# pdf("figures/Temperature_DEG_GO_31.pdf", height=12, width = 16)
+# (DEG_LFC_31)|(L31BPGO) + plot_layout(guides = "collect")
 # dev.off()
-
-
-pdf("figures/Temperature_DEG_GO_31.pdf", height=12, width = 16)
-(DEG_LFC_31)|(L31BPGO) + plot_layout(guides = "collect")
-dev.off()
-
-pdf("figures/Temperature_DEG_GO_28.pdf", height=7, width = 16)
-(DEG_LFC_28)|(L28BPGO) + plot_layout(guides = "collect")
-dev.off()
-
-```
+# 
+# pdf("figures/Temperature_DEG_GO_28.pdf", height=7, width = 16)
+# (DEG_LFC_28)|(L28BPGO) + plot_layout(guides = "collect")
+# dev.off()
+# 
+# ```
 
 

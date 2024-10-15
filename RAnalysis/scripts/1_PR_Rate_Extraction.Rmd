@@ -301,11 +301,14 @@ length(unique(pr.out$colony_id.x))
 pr.out <- pr.out %>%
   separate(Light_Level.x, c("Temperature", "Light"))
 
-pr.out <- pr.out %>%
-filter(!abs(micromol.cm2.s) > 0.2)
+str(pr.out)
 
-# Write to output file
-write.csv(pr.out, "output/pr_curve_extracted_rates.csv")
+pr.out <- pr.out %>%
+  mutate(Stage = ifelse(grepl("REC", colony_id.x), "Recruit", "Adult"))
+
+pr.out <- pr.out %>%
+  rename(colony_id = colony_id.x)
+
 ```
 #plot  data
 ```{r}
@@ -314,18 +317,27 @@ pr.out$PAR <- as.numeric(pr.out$Light)
 pr.out$Pc <- as.numeric(pr.out$micromol.cm2.s) 
 
 pr.out %>% 
-ggplot(aes(x=avg_temp_interval, y=Pc, color=Species, group=colony_id.x))+ 
+ggplot(aes(x=avg_temp_interval, y=Pc, color=Species, group=colony_id))+ 
   geom_point()+
   geom_line()+
   ylab("µmol O2 cm^2 s-1")+
-  facet_wrap(~ Species*Light,  ncol = 5, scales = "free")+
+  facet_wrap(~ Species*Light*Stage,  ncol = 5, scales = "free")+
   theme(legend.position = "none")
 
+
+pr.out <- pr.out %>% 
+  filter(Pc < 0.0008) %>% 
+  filter(Pc > -0.0005)
+
 pr.out %>% 
-ggplot(aes(x=avg_temp_interval, y=Pc, color=Species, group=colony_id.x))+ 
+ggplot(aes(x=avg_temp_interval, y=Pc, color=Species, group=colony_id))+ 
   geom_point()+
   geom_line()+
+  #ylim(-0.00052,0.00092)+
   ylab("µmol O2 cm^2 s-1")+
-   facet_wrap(~ Light,  ncol = 5, scales = "free")
+   facet_wrap(~ Light*Stage,  ncol = 2)
 
+
+# Write to output file
+write.csv(pr.out, "output/pr_curve_extracted_rates.csv")
 ```
