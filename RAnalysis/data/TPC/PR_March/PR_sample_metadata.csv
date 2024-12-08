@@ -1,0 +1,73 @@
+Date,colony_id,Chamber.Channel,Position,Bin.ID,Run,Species,Stage,Temp.Cat,Chamber.Vol.L,Notes
+20240305,BLK-003,2,5,left,2,Blank,Blank,ramp,0.355,NA
+20240305,BLK-004,12,6,right,2,Blank,Blank,ramp,0.371,NA
+20240309,BLK-005,3,6,left,3,Blank,Blank,ramp,0.368,NA
+20240309,BLK-006,14,8,right,3,Blank,Blank,ramp,0.378,NA
+20240310,BLK-007,6,9,left,4,Blank,Blank,ramp,0.386,NA
+20240310,BLK-008,15,9,right,4,Blank,Blank,ramp,0.387,NA
+20240313,BLK-009,4,7,left,5,Blank,Blank,ramp,0.375,NA
+20240313,BLK-010,18,12,right,5,Blank,Blank,ramp,0.374,NA
+20240310,POG-150,2,5,left,4,P. grandis,Adult,ramp,0.359,NA
+20240309,POG-151,6,9,left,3,P. grandis,Adult,ramp,0.357,NA
+20240305,POG-156,4,7,left,2,P. grandis,Adult,ramp,0.34,NA
+20240310,POG-159,12,6,right,4,P. grandis,Adult,ramp,0.357,NA
+20240313,POG-163,17,11,right,5,P. grandis,Adult,ramp,0.36,"probe melted on ramp to 38, switch out probe"
+20240305,POG-168,11,5,right,2,P. grandis,Adult,ramp,0.374,NA
+20240309,POG-172,8,11,left,3,P. grandis,Adult,ramp,0.342,NA
+20240313,POG-178,8,11,left,5,P. grandis,Adult,ramp,0.357,NA
+20240313,POM-001,1,4,left,5,P. meandrina,Adult,ramp,0.367,NA
+20240313,POM-002,9,12,left,5,P. meandrina,Adult,ramp,0.373,NA
+20240309,POM-003,13,7,right,3,P. meandrina,Adult,ramp,0.358,NA
+20240310,POM-018,11,5,right,4,P. meandrina,Adult,ramp,0.368,NA
+20240309,POM-133,16,10,right,3,P. meandrina,Adult,ramp,0.351,NA
+20240305,POM-185,1,4,left,2,P. meandrina,Adult,ramp,0.354,NA
+20240310,POM-195,1,4,left,4,P. meandrina,Adult,ramp,0.358,NA
+20240305,POM-196,10,4,right,2,P. meandrina,Adult,ramp,0.382,NA
+20240310,POT-024,16,10,right,4,P. tuahiniensis,Adult,ramp,0.354,NA
+20240310,POT-026,3,6,left,4,P. tuahiniensis,Adult,ramp,0.368,NA
+20240309,POT-029,5,8,left,3,P. tuahiniensis,Adult,ramp,0.355,NA
+20240305,POT-030,14,8,right,2,P. tuahiniensis,Adult,ramp,0.346,NA
+20240309,POT-038,17,11,right,3,P. tuahiniensis,Adult,ramp,0.35,NA
+20240313,POT-046,11,5,right,5,P. tuahiniensis,Adult,ramp,0.368,NA
+20240313,POT-048,13,7,right,5,P. tuahiniensis,Adult,ramp,0.368,NA
+20240305,POT-090,5,8,left,2,P. tuahiniensis,Adult,ramp,0.371,NA
+20240305,POV-004,15,9,right,2,P. verrucosa,Adult,ramp,0.362,NA
+20240310,POV-005,4,7,left,4,P. verrucosa,Adult,ramp,0.373,NA
+20240313,POV-014,6,9,left,5,P. verrucosa,Adult,ramp,0.373,NA
+20240309,POV-053,11,5,right,3,P. verrucosa,Adult,ramp,0.367,NA
+20240310,POV-057,17,11,right,4,P. verrucosa,Adult,ramp,0.357,NA
+20240309,POV-061,4,7,left,3,P. verrucosa,Adult,ramp,0.363,NA
+20240305,POV-069,8,11,left,2,P. verrucosa,Adult,ramp,0.343,NA
+20240313,POV-179,5,8,left,5,P. verrucosa,Adult,ramp,0.362,NA
+20240305,REC-009,3,6,left,2,P. meandrina,Recruit,ramp,0.366,NA
+20240305,REC-010,6,9,left,2,P. meandrina,Recruit,ramp,0.376,NA
+20240305,REC-011,7,10,left,2,P. meandrina,Recruit,ramp,0.364,NA
+20240305,REC-012,9,12,left,2,P. grandis,Recruit,ramp,0.368,NA
+20240305,REC-013,13,7,right,2,P. meandrina,Recruit,ramp,0.356,NA
+20240305,REC-014,16,10,right,2,P. grandis,Recruit,ramp,0.355,NA
+20240305,REC-015,17,11,right,2,P. grandis,Recruit,ramp,0.349,NA
+20240305,REC-016,18,12,right,2,P. grandis,Recruit,ramp,0.357,NA
+20240309,REC-017,1,4,left,3,P. meandrina,Recruit,ramp,0.37,NA
+20240309,REC-018,12,6,right,3,P. meandrina,Recruit,ramp,0.369,NA
+20240309,REC-019,10,4,right,3,P. meandrina,Recruit,ramp,0.373,NA
+20240309,REC-020,18,12,right,3,P. meandrina,Recruit,ramp,0.356,NA
+20240309,REC-021,2,5,left,3,P. meandrina,Recruit,ramp,0.368,NA
+20240309,REC-022,7,10,left,3,P. meandrina,Recruit,ramp,0.362,NA
+20240309,REC-023,9,12,left,3,P. meandrina,Recruit,ramp,0.354,NA
+20240309,REC-024,15,9,right,3,P. meandrina,Recruit,ramp,0.348,NA
+20240310,REC-025,5,8,left,4,P. meandrina,Recruit,ramp,0.36,NA
+20240310,REC-026,7,10,left,4,P. acuta,Recruit,ramp,0.37,NA
+20240310,REC-027,8,11,left,4,P. meandrina,Recruit,ramp,0.358,NA
+20240310,REC-028,13,7,right,4,P. meandrina,Recruit,ramp,0.372,NA
+20240310,REC-029,14,8,right,4,P. meandrina,Recruit,ramp,0.383,NA
+20240310,REC-030,10,4,right,4,P. meandrina,Recruit,ramp,0.388,NA
+20240310,REC-031,9,12,left,4,P. meandrina,Recruit,ramp,0.373,NA
+20240310,REC-032,18,12,right,4,P. meandrina,Recruit,ramp,0.387,"problems with probe in first temp, switched out probe for new one"
+20240313,REC-033,7,10,left,5,P. meandrina,Recruit,ramp,0.367,NA
+20240313,REC-034,16,10,right,5,P. meandrina,Recruit,ramp,0.36,NA
+20240313,REC-035,14,8,right,5,P. meandrina,Recruit,ramp,0.383,NA
+20240313,REC-036,2,5,left,5,P. acuta,Recruit,ramp,0.371,NA
+20240313,REC-037,10,4,right,5,P. meandrina,Recruit,ramp,0.38,NA
+20240313,REC-038,3,6,left,5,P. meandrina,Recruit,ramp,0.364,NA
+20240313,REC-039,15,9,right,5,P. meandrina,Recruit,ramp,0.358,NA
+20240313,REC-040,12,6,right,5,P. meandrina,Recruit,ramp,0.373,NA
