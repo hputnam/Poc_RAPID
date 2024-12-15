@@ -4,7 +4,7 @@ output: html_document
 ---
 
 ```{r setup, include = FALSE}
-knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 
 ## install packages if you dont already have them in your library
 if (!require("devtools")) install.packages("devtools")
@@ -34,7 +34,7 @@ library(furrr)
 
 ## Import metadata
 ```{r, warning = FALSE}
-path.p <- "data/TPC/PR_Nov/Run5" #the location of all your respirometry files 
+path.p <- "data/TPC/PR_Nov" #the location of all your respirometry files 
 
 # List data files
 file.names <- list.files(path = path.p, pattern = "csv$")  # list all csv file names in the folder
@@ -311,6 +311,9 @@ pr.out <- pr.out %>%
 pr.out <- pr.out %>%
   rename(colony_id = colony_id.x)
 
+# Write to output file
+write.csv(pr.out, "output/Nov_pr_curve_extracted_rates.csv")
+
 ```
 #plot  data
 ```{r}
@@ -319,11 +322,43 @@ pr.out$PAR <- as.numeric(pr.out$Light)
 pr.out$Pc <- as.numeric(pr.out$micromol.cm2.s) 
 
 pr.out %>% 
-ggplot(aes(x=avg_temp_interval, y=Pc, color=Species, group=colony_id))+ 
+  filter(Species=="P. grandis")%>%
+  filter(Light==560)%>%
+ggplot(aes(x=avg_temp_interval, y=Pc, color=colony_id, group=colony_id))+ 
   geom_point()+
   geom_line()+
   ylab("µmol O2 cm^2 s-1")+
-  facet_wrap(~ Species*Light*Stage,  ncol = 5, scales = "free")+
+  facet_wrap(~ colony_id,  ncol = 5)+
+  theme(legend.position = "none")
+
+pr.out %>% 
+  filter(Species=="P. meandrina")%>%
+  filter(Light==560)%>%
+ggplot(aes(x=avg_temp_interval, y=Pc, color=colony_id, group=colony_id))+ 
+  geom_point()+
+  geom_line()+
+  ylab("µmol O2 cm^2 s-1")+
+  facet_wrap(~ colony_id,  ncol = 5)+
+  theme(legend.position = "none")
+
+pr.out %>% 
+  filter(Species=="P. verrucosa")%>%
+  filter(Light==560)%>%
+ggplot(aes(x=avg_temp_interval, y=Pc, color=colony_id, group=colony_id))+ 
+  geom_point()+
+  geom_line()+
+  ylab("µmol O2 cm^2 s-1")+
+  facet_wrap(~ colony_id,  ncol = 5)+
+  theme(legend.position = "none")
+
+pr.out %>% 
+  filter(Species=="P. tuahiniensis")%>%
+  filter(Light==560)%>%
+ggplot(aes(x=avg_temp_interval, y=Pc, color=colony_id, group=colony_id))+ 
+  geom_point()+
+  geom_line()+
+  ylab("µmol O2 cm^2 s-1")+
+  facet_wrap(~ colony_id,  ncol = 5)+
   theme(legend.position = "none")
 
 
@@ -340,6 +375,4 @@ ggplot(aes(x=avg_temp_interval, y=Pc, color=Species, group=colony_id))+
    facet_wrap(~ Light*Stage,  ncol = 2)
 
 
-# Write to output file
-write.csv(pr.out, "output/Nov_Run4_pr_curve_extracted_rates.csv")
 ```

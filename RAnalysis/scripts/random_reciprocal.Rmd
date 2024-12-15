@@ -1,0 +1,53 @@
+---
+title: "random_reciprocal"
+author: "HM Putnam"
+date: "2024-12-10"
+output: html_document
+---
+
+
+```{r}
+# Define the well plate structure (4 rows x 5 columns)
+rows <- c("A", "B", "C", "D")
+cols <- 1:5
+
+# Generate all possible well names for a 20-well plate
+wells <- expand.grid(row = rows, col = cols)
+wells$well_name <- paste(wells$row, wells$col, sep = "")
+
+# Create a list to represent the original plates (4 plates)
+original_plates <- list()
+for (i in 1:4) {
+  original_plates[[i]] <- sample(wells$well_name, 5)  # Randomly select 5 wells
+}
+
+# Prepare a matrix for each of the 4 new plates (10-13)
+new_plates <- list()
+for (i in 1:4) {
+  new_plates[[i]] <- matrix(NA, nrow = 4, ncol = 5)  # 4 rows x 5 columns
+}
+
+# Allocate wells from original plates to new plates
+for (i in 1:4) {
+  # Randomly shuffle wells selected from the original plate
+  selected_wells <- original_plates[[i]]
+  selected_wells <- sample(selected_wells)
+  
+  # Fill the new plate with the selected wells
+  for (j in 1:5) {
+    # Identify the corresponding position in the new plate
+    new_plates[[j]][, i] <- selected_wells
+  }
+}
+
+# Save each of the 4 new plates as a CSV file
+for (i in 1:4) {
+  new_plate_df <- as.data.frame(new_plates[[i]])
+  colnames(new_plate_df) <- paste("Column", 1:5, sep = "_")
+  write.csv(new_plate_df, file = paste("plate", 10 + i, ".csv", sep = ""), row.names = FALSE)
+}
+
+# Output a message to indicate that the process is complete
+cat("CSV files have been generated for the new plates (plates 10-13).\n")
+
+```

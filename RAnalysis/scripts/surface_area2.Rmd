@@ -17,7 +17,7 @@ if (!require("tidyverse")) install.packages("tidyverse")
 library(tidyverse)
 ```
 
-#use wooden dowel standards to calculate surface area curve 
+#use wooden standards to calculate surface area curve 
 ```{r}
 
 #load wax data
